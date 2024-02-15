@@ -99,7 +99,6 @@ constexpr Bitboard KingFlank[FILE_NB] = {
   KingSide, KingSide, KingSide ^ FileEBB
 };
 
-extern uint8_t PopCnt16[1 << 16];
 extern uint8_t SquareDistance[SQUARE_NB][SQUARE_NB];
 
 extern Bitboard SquareBB[SQUARE_NB];
@@ -492,34 +491,10 @@ inline Bitboard moves_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
 /// popcount() counts the number of non-zero bits in a bitboard
 
 inline int popcount(Bitboard b) {
-
-#ifndef USE_POPCNT
-
-#ifdef LARGEBOARDS
-  union { Bitboard bb; uint16_t u[8]; } v = { b };
-  return  PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]]
-        + PopCnt16[v.u[4]] + PopCnt16[v.u[5]] + PopCnt16[v.u[6]] + PopCnt16[v.u[7]];
-#else
-  union { Bitboard bb; uint16_t u[4]; } v = { b };
-  return PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]];
-#endif
-
-#elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-
-#ifdef LARGEBOARDS
-  return (int)_mm_popcnt_u64(uint64_t(b >> 64)) + (int)_mm_popcnt_u64(uint64_t(b));
-#else
-  return (int)_mm_popcnt_u64(b);
-#endif
-
-#else // Assumed gcc or compatible compiler
-
 #ifdef LARGEBOARDS
   return __builtin_popcountll(b >> 64) + __builtin_popcountll(b);
 #else
   return __builtin_popcountll(b);
-#endif
-
 #endif
 }
 
@@ -682,21 +657,7 @@ inline Square frontmost_sq(Color c, Bitboard b) {
 /// popcount() counts the number of non-zero bits in a piece set
 
 inline int popcount(PieceSet ps) {
-
-#ifndef USE_POPCNT
-
-  union { uint64_t bb; uint16_t u[4]; } v = { (uint64_t)ps };
-  return PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]];
-
-#elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-
-  return (int)_mm_popcnt_u64(ps);
-
-#else // Assumed gcc or compatible compiler
-
   return __builtin_popcountll(ps);
-
-#endif
 }
 
 /// lsb() and msb() return the least/most significant bit in a non-zero piece set

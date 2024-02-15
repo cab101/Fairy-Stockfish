@@ -26,7 +26,6 @@
 
 namespace Stockfish {
 
-uint8_t PopCnt16[1 << 16];
 uint8_t SquareDistance[SQUARE_NB][SQUARE_NB];
 
 Bitboard SquareBB[SQUARE_NB];
@@ -313,9 +312,6 @@ void Bitboards::init_pieces() {
 /// startup and relies on global objects to be already zero-initialized.
 
 void Bitboards::init() {
-
-  for (unsigned i = 0; i < (1 << 16); ++i)
-      PopCnt16[i] = uint8_t(std::bitset<16>(i).count());
 
   for (Square s = SQ_A1; s <= SQ_MAX; ++s)
       SquareBB[s] = make_bitboard(s);
