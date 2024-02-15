@@ -284,6 +284,23 @@ namespace {
         v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | ROOK | BISHOP | CUSTOM_PIECE_1;
         return v;
     }
+
+    Variant* cavalry_variant() {
+        Variant* v = chess_variant_base()->init();
+        v->pieceToCharTable = "PNBR..............QKpnbr..............qk";
+        v->remove_piece(QUEEN);
+        v->remove_piece(ROOK);
+        v->remove_piece(KNIGHT);
+        v->remove_piece(BISHOP);
+        v->add_piece(AMAZON, 'q');
+        v->add_piece(CHANCELLOR, 'r');
+        v->add_piece(CUSTOM_PIECE_1, 'n', "NN");
+        v->add_piece(ARCHBISHOP, 'b');
+        v->castlingRookPieces[WHITE] = v->castlingRookPieces[BLACK] = piece_set(CHANCELLOR);
+        v->promotionPieceTypes[WHITE] = piece_set(AMAZON) | CHANCELLOR | ARCHBISHOP | CUSTOM_PIECE_1;
+        v->promotionPieceTypes[BLACK] = piece_set(AMAZON) | CHANCELLOR | ARCHBISHOP | CUSTOM_PIECE_1;
+        return v;
+    }
     // Grasshopper chess
     // https://en.wikipedia.org/wiki/Grasshopper_chess
     Variant* grasshopper_variant() {
@@ -1194,6 +1211,25 @@ namespace {
         v->passOnStalemate[BLACK] = true;
         return v;
     }
+
+    Variant* cfour() {
+        Variant* v = variant_base()->init();
+        v->maxRank = RANK_6;
+        v->maxFile = FILE_G;
+        v->reset_pieces();
+        v->add_piece(IMMOBILE_PIECE, 'p');
+        v->startFen = "7/7/7/7/7/7[PPPPPPPPPPPPPPPPPPPPPppppppppppppppppppppp] w - - 0 1";
+        v->pieceDrops = true;
+        v->enclosingDrop = TOP;
+        v->doubleStep = false;
+        v->castling = false;
+        v->stalemateValue = VALUE_DRAW;
+        v->immobilityIllegal = false;
+        v->connectN = 4;
+        v->nMoveRule = 0;
+        return v;
+    }
+
     // Minixiangqi
     // http://mlwi.magix.net/bg/minixiangqi.htm
     Variant* minixiangqi_variant() {
@@ -1761,8 +1797,8 @@ namespace {
         v->materialCounting = JANGGI_MATERIAL;
         v->diagonalLines = make_bitboard(SQ_D1, SQ_F1, SQ_E2, SQ_D3, SQ_F3,
                                          SQ_D8, SQ_F8, SQ_E9, SQ_D10, SQ_F10);
-        v->pass[WHITE] = true;
-        v->pass[BLACK] = true;
+        v->passOnStalemate[WHITE] = true;
+        v->passOnStalemate[BLACK] = true;
         v->nFoldValue = VALUE_DRAW;
         v->perpetualCheckIllegal = true;
         return v;
@@ -1890,8 +1926,10 @@ void VariantMap::init() {
     add("ataxx", ataxx_variant());
     add("flipersi", flipersi_variant());
     add("flipello", flipello_variant());
+    add("cfour", cfour());
     add("minixiangqi", minixiangqi_variant());
     add("raazuvaa", raazuvaa_variant());
+    add("cavalry", cavalry_variant());
 #ifdef LARGEBOARDS
     add("shogi", shogi_variant());
     add("shoshogi", shoshogi_variant());
