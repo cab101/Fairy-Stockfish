@@ -37,6 +37,8 @@
 #include "xboard.h"
 #include "syzygy/tbprobe.h"
 
+#include "storage.h"
+
 namespace Stockfish {
 
 namespace Search {
@@ -58,6 +60,13 @@ using std::string;
 using Eval::evaluate;
 using namespace Search;
 
+typedef cab::Block<Move, MAX_PLY+1> MoveBlock;
+typedef cab::Block<Move, 64> MoveBlock64;
+typedef cab::Block<StateInfo, 1> StateBlock;
+typedef cab::List<MoveBlock, Move> Moves;
+typedef cab::List<MoveBlock64, Move> Moves64;
+typedef cab::List<StateBlock , StateInfo> State;
+
 namespace {
 
   // Different node types, used as a template parameter
@@ -71,11 +80,15 @@ namespace {
     return Value(214 * (d - improving));
   }
 
+  cab::Storage<MoveBlock> storage;
+  cab::Storage<MoveBlock64> storage64;
+  cab::Storage<StateBlock> storageState;
+
   // Reductions lookup table, initialized at startup
-  int Reductions[MAX_MOVES]; // [depth or moveNumber]
+  std::shared_ptr<int> Reductions(new int[MAX_MOVES], [](int *p) { delete[] p; }); // [depth or moveNumber]
 
   Depth reduction(bool i, Depth d, int mn) {
-    int r = Reductions[d] * Reductions[mn];
+    int r = Reductions.get()[d] * Reductions.get()[mn];
     return (r + 534) / 1024 + (!i && r > 904);
   }
 
@@ -123,8 +136,8 @@ namespace {
   template<bool Root>
   uint64_t perft(Position& pos, Depth depth) {
 
-    StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
+    State st(&storageState);
+    ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     uint64_t cnt, nodes = 0;
     const bool leaf = (depth == 2);
@@ -136,7 +149,7 @@ namespace {
             cnt = 1, nodes++;
         else
         {
-            pos.do_move(m, st);
+            pos.do_move(m, *st.ptr());
             cnt = leaf ? MoveList<LEGAL>(pos).size() : perft<false>(pos, depth - 1);
             nodes += cnt;
             pos.undo_move(m);
@@ -155,7 +168,7 @@ namespace {
 void Search::init() {
 
   for (int i = 1; i < MAX_MOVES; ++i)
-      Reductions[i] = int(21.9 * std::log(i));
+      Reductions.get()[i] = int(21.9 * std::log(i));
 }
 
 
@@ -319,8 +332,8 @@ void Thread::search() {
   // The former is needed to allow update_continuation_histories(ss-1, ...),
   // which accesses its argument at ss-6, also near the root.
   // The latter is needed for statScore and killer initialization.
-  Stack stack[MAX_PLY+10], *ss = stack+7;
-  Move  pv[MAX_PLY+1];
+  Stack *ss = stack+7;
+  Moves pv(&storage);
   Value bestValue, alpha, beta, delta;
   Move  lastBestMove = MOVE_NONE;
   Depth lastBestMoveDepth = 0;
@@ -336,7 +349,7 @@ void Thread::search() {
   for (int i = 0; i <= MAX_PLY + 2; ++i)
       (ss+i)->ply = i;
 
-  ss->pv = pv;
+  ss->pv = pv.ptr();
 
   bestValue = delta = alpha = -VALUE_INFINITE;
   beta = VALUE_INFINITE;
@@ -678,9 +691,10 @@ namespace {
     assert(0 < depth && depth < MAX_PLY);
     assert(!(PvNode && cutNode));
 
-    Move pv[MAX_PLY+1], capturesSearched[32], quietsSearched[64];
-    StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
+    Moves pv(&storage);
+    Moves64 capturesSearched(&storage64), quietsSearched(&storage64);
+    State st(&storageState);
+    ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
     Key posKey;
@@ -951,7 +965,7 @@ namespace {
         ss->currentMove = MOVE_NULL;
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
 
-        pos.do_null_move(st);
+        pos.do_null_move(*st.ptr());
 
         Value nullValue = -search<NonPV>(pos, ss+1, -beta, -beta+1, depth-R, !cutNode);
 
@@ -1022,7 +1036,7 @@ namespace {
                                                                           [history_slot(pos.moved_piece(move))]
                                                                           [to_sq(move)];
 
-                pos.do_move(move, st);
+                pos.do_move(move, *st.ptr());
 
                 // Perform a preliminary qsearch to verify that the move holds
                 value = -qsearch<NonPV>(pos, ss+1, -probCutBeta, -probCutBeta+1);
@@ -1272,7 +1286,7 @@ moves_loop: // When in check, search starts from here
                                                                 [to_sq(move)];
 
       // Step 15. Make the move
-      pos.do_move(move, st, givesCheck);
+      pos.do_move(move, *st.ptr(), givesCheck);
 
       // Step 16. Late moves reduction / extension (LMR, ~200 Elo)
       // We use various heuristics for the sons of a node after the first son has
@@ -1373,7 +1387,7 @@ moves_loop: // When in check, search starts from here
       // parent node fail low with value <= alpha and try another move.
       if (PvNode && (moveCount == 1 || (value > alpha && (rootNode || value < beta))))
       {
-          (ss+1)->pv = pv;
+          (ss+1)->pv = pv.ptr();
           (ss+1)->pv[0] = MOVE_NONE;
 
           value = -search<PV>(pos, ss+1, -beta, -alpha,
@@ -1476,7 +1490,7 @@ moves_loop: // When in check, search starts from here
     // If there is a move which produces search value greater than alpha we update stats of searched moves
     else if (bestMove)
         update_all_stats(pos, ss, bestMove, bestValue, beta, prevSq,
-                         quietsSearched, quietCount, capturesSearched, captureCount, depth);
+                         quietsSearched.ptr(), quietCount, capturesSearched.ptr(), captureCount, depth);
 
     // Bonus for prior countermove that caused the fail low
     else if (   (depth >= 3 || PvNode)
@@ -1520,9 +1534,9 @@ moves_loop: // When in check, search starts from here
     assert(PvNode || (alpha == beta - 1));
     assert(depth <= 0);
 
-    Move pv[MAX_PLY+1];
-    StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
+    Moves pv(&storage);
+    State st(&storageState);
+    ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
     Key posKey;
@@ -1535,7 +1549,7 @@ moves_loop: // When in check, search starts from here
     if (PvNode)
     {
         oldAlpha = alpha; // To flag BOUND_EXACT when eval above alpha and no available moves
-        (ss+1)->pv = pv;
+        (ss+1)->pv = pv.ptr();
         ss->pv[0] = MOVE_NONE;
     }
 
@@ -1698,7 +1712,7 @@ moves_loop: // When in check, search starts from here
           continue;
 
       // Make and search the move
-      pos.do_move(move, st, givesCheck);
+      pos.do_move(move, *st.ptr(), givesCheck);
       value = -qsearch<nodeType>(pos, ss+1, -beta, -alpha, depth - 1);
       pos.undo_move(move);
 
@@ -2068,8 +2082,8 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
 
 bool RootMove::extract_ponder_from_tt(Position& pos) {
 
-    StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
+    State st(&storageState);
+    ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     bool ttHit;
 
@@ -2078,7 +2092,7 @@ bool RootMove::extract_ponder_from_tt(Position& pos) {
     if (pv[0] == MOVE_NONE)
         return false;
 
-    pos.do_move(pv[0], st);
+    pos.do_move(pv[0], *st.ptr());
     TTEntry* tte = TT.probe(pos.key(), ttHit);
 
     if (ttHit)

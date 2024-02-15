@@ -23,6 +23,8 @@
 
 namespace Stockfish {
 
+cab::Storage<MoveBlockMax> maxStorage;
+
 namespace {
 
   template<MoveType T>

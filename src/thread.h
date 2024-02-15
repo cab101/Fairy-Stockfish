@@ -46,7 +46,7 @@ class Thread {
   size_t idx;
   bool exit = false, searching = true; // Set before starting std::thread
   NativeThread stdThread;
-
+  Search::Stack stack[MAX_PLY+10];
 public:
   explicit Thread(size_t);
   virtual ~Thread();

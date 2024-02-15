@@ -22,6 +22,7 @@
 #include <algorithm>
 
 #include "types.h"
+#include "storage.h"
 
 namespace Stockfish {
 
@@ -52,6 +53,11 @@ inline bool operator<(const ExtMove& f, const ExtMove& s) {
   return f.value < s.value;
 }
 
+typedef cab::Block<ExtMove, MAX_MOVES> MoveBlockMax;
+typedef cab::List<MoveBlockMax, ExtMove> MovesMax;
+
+extern cab::Storage<MoveBlockMax> maxStorage;
+
 template<GenType>
 ExtMove* generate(const Position& pos, ExtMove* moveList);
 
@@ -60,7 +66,10 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 template<GenType T>
 struct MoveList {
 
-  explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {}
+  explicit MoveList(const Position& pos): list(&maxStorage) {
+    moveList = list.ptr();
+    last = generate<T>(pos, moveList);
+  }
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }
   size_t size() const { return last - moveList; }
@@ -69,7 +78,8 @@ struct MoveList {
   }
 
 private:
-  ExtMove moveList[MAX_MOVES], *last;
+  MovesMax list;
+  ExtMove* moveList, *last;
 };
 
 } // namespace Stockfish
