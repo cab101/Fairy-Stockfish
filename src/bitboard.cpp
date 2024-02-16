@@ -19,8 +19,6 @@
 #include <algorithm>
 #include <bitset>
 
-#include "heap_object.h"
-
 #include "bitboard.h"
 #include "magic.h"
 #include "misc.h"
@@ -41,24 +39,43 @@ Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 RiderType AttackRiderTypes[PIECE_TYPE_NB];
 RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
 
-Magic RookMagicsH[SQUARE_NB];
-Magic RookMagicsV[SQUARE_NB];
-Magic BishopMagics[SQUARE_NB];
-Magic CannonMagicsH[SQUARE_NB];
-Magic CannonMagicsV[SQUARE_NB];
-Magic LameDabbabaMagics[SQUARE_NB];
-Magic HorseMagics[SQUARE_NB];
-Magic ElephantMagics[SQUARE_NB];
-Magic JanggiElephantMagics[SQUARE_NB];
-Magic CannonDiagMagics[SQUARE_NB];
-Magic NightriderMagics[SQUARE_NB];
-Magic GrasshopperMagicsH[SQUARE_NB];
-Magic GrasshopperMagicsV[SQUARE_NB];
-Magic GrasshopperMagicsD[SQUARE_NB];
+struct MagicData : public virtual cab::IHeapObject {
+    Magic RookMagicsH[SQUARE_NB];
+    Magic RookMagicsV[SQUARE_NB];
+    Magic BishopMagics[SQUARE_NB];
+    Magic CannonMagicsH[SQUARE_NB];
+    Magic CannonMagicsV[SQUARE_NB];
+    Magic LameDabbabaMagics[SQUARE_NB];
+    Magic HorseMagics[SQUARE_NB];
+    Magic ElephantMagics[SQUARE_NB];
+    Magic JanggiElephantMagics[SQUARE_NB];
+    Magic CannonDiagMagics[SQUARE_NB];
+    Magic NightriderMagics[SQUARE_NB];
+    Magic GrasshopperMagicsH[SQUARE_NB];
+    Magic GrasshopperMagicsV[SQUARE_NB];
+    Magic GrasshopperMagicsD[SQUARE_NB];
+    MagicData() : cab::IHeapObject() {}
+    ~MagicData() {}
+};
 
-Magic* magics[] = {BishopMagics, RookMagicsH, RookMagicsV, CannonMagicsH, CannonMagicsV,
-                   LameDabbabaMagics, HorseMagics, ElephantMagics, JanggiElephantMagics, CannonDiagMagics, NightriderMagics,
-                   GrasshopperMagicsH, GrasshopperMagicsV, GrasshopperMagicsD};
+MagicData * magicData = new MagicData();
+
+Magic* magics[] = {
+        magicData->BishopMagics,
+        magicData->RookMagicsH,
+        magicData->RookMagicsV,
+        magicData->CannonMagicsH,
+        magicData->CannonMagicsV,
+        magicData->LameDabbabaMagics,
+        magicData->HorseMagics,
+        magicData->ElephantMagics,
+        magicData->JanggiElephantMagics,
+        magicData->CannonDiagMagics,
+        magicData->NightriderMagics,
+        magicData->GrasshopperMagicsH,
+        magicData->GrasshopperMagicsV,
+        magicData->GrasshopperMagicsD
+};
 
 namespace {
 
@@ -334,35 +351,35 @@ void Bitboards::init() {
               SquareDistance[s1][s2] = std::max(distance<File>(s1, s2), distance<Rank>(s1, s2));
 
 #ifdef PRECOMPUTED_MAGICS
-  init_magics<RIDER>(tables->RookTableH, RookMagicsH, RookDirectionsH, RookMagicHInit);
-  init_magics<RIDER>(tables->RookTableV, RookMagicsV, RookDirectionsV, RookMagicVInit);
-  init_magics<RIDER>(tables->BishopTable, BishopMagics, BishopDirections, BishopMagicInit);
-  init_magics<HOPPER>(tables->CannonTableH, CannonMagicsH, RookDirectionsH, CannonMagicHInit);
-  init_magics<HOPPER>(tables->CannonTableV, CannonMagicsV, RookDirectionsV, CannonMagicVInit);
-  init_magics<LAME_LEAPER>(tables->LameDabbabaTable, LameDabbabaMagics, LameDabbabaDirections, LameDabbabaMagicInit);
-  init_magics<LAME_LEAPER>(tables->HorseTable, HorseMagics, HorseDirections, HorseMagicInit);
-  init_magics<LAME_LEAPER>(tables->ElephantTable, ElephantMagics, ElephantDirections, ElephantMagicInit);
-  init_magics<LAME_LEAPER>(tables->JanggiElephantTable, JanggiElephantMagics, JanggiElephantDirections, JanggiElephantMagicInit);
-  init_magics<HOPPER>(tables->CannonDiagTable, CannonDiagMagics, BishopDirections, CannonDiagMagicInit);
-  init_magics<RIDER>(tables->NightriderTable, NightriderMagics, HorseDirections, NightriderMagicInit);
-  init_magics<HOPPER>(tables->GrasshopperTableH, GrasshopperMagicsH, GrasshopperDirectionsH, GrasshopperMagicHInit);
-  init_magics<HOPPER>(tables->GrasshopperTableV, GrasshopperMagicsV, GrasshopperDirectionsV, GrasshopperMagicVInit);
-  init_magics<HOPPER>(tables->GrasshopperTableD, GrasshopperMagicsD, GrasshopperDirectionsD, GrasshopperMagicDInit);
+  init_magics<RIDER>(tables->RookTableH, magicData->RookMagicsH, RookDirectionsH, RookMagicHInit);
+  init_magics<RIDER>(tables->RookTableV, magicData->RookMagicsV, RookDirectionsV, RookMagicVInit);
+  init_magics<RIDER>(tables->BishopTable, magicData->BishopMagics, BishopDirections, BishopMagicInit);
+  init_magics<HOPPER>(tables->CannonTableH, magicData->CannonMagicsH, RookDirectionsH, CannonMagicHInit);
+  init_magics<HOPPER>(tables->CannonTableV, magicData->CannonMagicsV, RookDirectionsV, CannonMagicVInit);
+  init_magics<LAME_LEAPER>(tables->LameDabbabaTable, magicData->LameDabbabaMagics, LameDabbabaDirections, LameDabbabaMagicInit);
+  init_magics<LAME_LEAPER>(tables->HorseTable, magicData->HorseMagics, HorseDirections, HorseMagicInit);
+  init_magics<LAME_LEAPER>(tables->ElephantTable, magicData->ElephantMagics, ElephantDirections, ElephantMagicInit);
+  init_magics<LAME_LEAPER>(tables->JanggiElephantTable, magicData->JanggiElephantMagics, JanggiElephantDirections, JanggiElephantMagicInit);
+  init_magics<HOPPER>(tables->CannonDiagTable, magicData->CannonDiagMagics, BishopDirections, CannonDiagMagicInit);
+  init_magics<RIDER>(tables->NightriderTable, magicData->NightriderMagics, HorseDirections, NightriderMagicInit);
+  init_magics<HOPPER>(tables->GrasshopperTableH, magicData->GrasshopperMagicsH, GrasshopperDirectionsH, GrasshopperMagicHInit);
+  init_magics<HOPPER>(tables->GrasshopperTableV, magicData->GrasshopperMagicsV, GrasshopperDirectionsV, GrasshopperMagicVInit);
+  init_magics<HOPPER>(tables->GrasshopperTableD, magicData->GrasshopperMagicsD, GrasshopperDirectionsD, GrasshopperMagicDInit);
 #else
-  init_magics<RIDER>(tables->RookTableH, RookMagicsH, RookDirectionsH);
-  init_magics<RIDER>(tables->RookTableV, RookMagicsV, RookDirectionsV);
-  init_magics<RIDER>(tables->BishopTable, BishopMagics, BishopDirections);
-  init_magics<HOPPER>(tables->CannonTableH, CannonMagicsH, RookDirectionsH);
-  init_magics<HOPPER>(tables->CannonTableV, CannonMagicsV, RookDirectionsV);
-  init_magics<LAME_LEAPER>(tables->LameDabbabaTable, LameDabbabaMagics, LameDabbabaDirections);
-  init_magics<LAME_LEAPER>(tables->HorseTable, HorseMagics, HorseDirections);
-  init_magics<LAME_LEAPER>(tables->ElephantTable, ElephantMagics, ElephantDirections);
-  init_magics<LAME_LEAPER>(tables->JanggiElephantTable, JanggiElephantMagics, JanggiElephantDirections);
-  init_magics<HOPPER>(tables->CannonDiagTable, CannonDiagMagics, BishopDirections);
-  init_magics<RIDER>(tables->NightriderTable, NightriderMagics, HorseDirections);
-  init_magics<HOPPER>(tables->GrasshopperTableH, GrasshopperMagicsH, GrasshopperDirectionsH);
-  init_magics<HOPPER>(tables->GrasshopperTableV, GrasshopperMagicsV, GrasshopperDirectionsV);
-  init_magics<HOPPER>(tables->GrasshopperTableD, GrasshopperMagicsD, GrasshopperDirectionsD);
+  init_magics<RIDER>(tables->RookTableH, magicData->RookMagicsH, RookDirectionsH);
+  init_magics<RIDER>(tables->RookTableV, magicData->RookMagicsV, RookDirectionsV);
+  init_magics<RIDER>(tables->BishopTable, magicData->BishopMagics, BishopDirections);
+  init_magics<HOPPER>(tables->CannonTableH, magicData->CannonMagicsH, RookDirectionsH);
+  init_magics<HOPPER>(tables->CannonTableV, magicData->CannonMagicsV, RookDirectionsV);
+  init_magics<LAME_LEAPER>(tables->LameDabbabaTable, magicData->LameDabbabaMagics, LameDabbabaDirections);
+  init_magics<LAME_LEAPER>(tables->HorseTable, magicData->HorseMagics, HorseDirections);
+  init_magics<LAME_LEAPER>(tables->ElephantTable, magicData->ElephantMagics, ElephantDirections);
+  init_magics<LAME_LEAPER>(tables->JanggiElephantTable, magicData->JanggiElephantMagics, JanggiElephantDirections);
+  init_magics<HOPPER>(tables->CannonDiagTable, magicData->CannonDiagMagics, BishopDirections);
+  init_magics<RIDER>(tables->NightriderTable, magicData->NightriderMagics, HorseDirections);
+  init_magics<HOPPER>(tables->GrasshopperTableH, magicData->GrasshopperMagicsH, GrasshopperDirectionsH);
+  init_magics<HOPPER>(tables->GrasshopperTableV, magicData->GrasshopperMagicsV, GrasshopperDirectionsV);
+  init_magics<HOPPER>(tables->GrasshopperTableD, magicData->GrasshopperMagicsD, GrasshopperDirectionsD);
 #endif
 
   init_pieces();
