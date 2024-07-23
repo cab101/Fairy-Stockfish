@@ -314,7 +314,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
       }
 
       // Promoted shogi pieces
-      else if (token == '+' && (idx = piece_to_char().find(ss.peek())) != string::npos)
+      else if (token == '+' && (idx = piece_to_char().find(ss.peek())) != string::npos && promoted_piece_type(type_of(Piece(idx))))
       {
           ss >> token;
           put_piece(make_piece(color_of(Piece(idx)), promoted_piece_type(type_of(Piece(idx)))), sq, true, Piece(idx));
@@ -1303,7 +1303,8 @@ bool Position::pseudo_legal(const Move m) const {
       return checkers() ? MoveList<    EVASIONS>(*this).contains(m)
                         : MoveList<NON_EVASIONS>(*this).contains(m);
 
-  if (walling())
+  //if walling, and walling is not optional, or they didn't move, do the checks.
+  if (walling() && (!var->wallOrMove || (from==to)))
   {
       Bitboard wallsquares = st->wallSquares;
 
@@ -1557,7 +1558,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Piece captured = piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
   if (to == from)
   {
-      assert((type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && pass(us)));
+      assert((type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
       captured = NO_PIECE;
   }
   st->capturedpromoted = is_promoted(to);
@@ -2045,7 +2046,8 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   }
 
   // Add gated wall square
-  if (walling())
+  // if wallOrMove, only actually place the wall if they gave up their move
+  if (walling() && (!var->wallOrMove || (from==to)))
   {
       // Reset wall squares for duck walling
       if (walling_rule() == DUCK)
@@ -2126,7 +2128,7 @@ void Position::undo_move(Move m) {
 
   assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m)
          || (type_of(m) == PROMOTION && sittuyin_promotion())
-         || (is_pass(m) && pass(us)));
+         || (is_pass(m) && (pass(us) || var->wallOrMove)));
   assert(type_of(st->capturedPiece) != KING);
 
   // Reset wall squares
@@ -2885,7 +2887,7 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
   }
 
   // Check for bikjang rule (Janggi), double passing, or board running full
-  if (   (st->pliesFromNull > 0 && ((st->bikjang && st->previous->bikjang) || (st->pass && st->previous->pass)))
+  if (   (st->pliesFromNull > 0 && ((st->bikjang && st->previous->bikjang) || ((st->pass && st->previous->pass)&&!var->wallOrMove)))
       || (var->adjudicateFullBoard && !(~pieces() & board_bb())))
   {
       result = var->materialCounting ? convert_mate_value(material_counting_result(), ply) : VALUE_DRAW;
