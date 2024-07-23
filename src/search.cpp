@@ -37,8 +37,6 @@
 #include "xboard.h"
 #include "syzygy/tbprobe.h"
 
-#include "storage.h"
-
 namespace Stockfish {
 
 namespace Search {
@@ -60,13 +58,6 @@ using std::string;
 using Eval::evaluate;
 using namespace Search;
 
-typedef cab::Block<Move, MAX_PLY+1> MoveBlock;
-typedef cab::Block<Move, 64> MoveBlock64;
-typedef cab::Block<StateInfo, 1> StateBlock;
-typedef cab::List<MoveBlock, Move> Moves;
-typedef cab::List<MoveBlock64, Move> Moves64;
-typedef cab::List<StateBlock , StateInfo> State;
-
 namespace {
 
   // Different node types, used as a template parameter
@@ -79,10 +70,6 @@ namespace {
   Value futility_margin(Depth d, bool improving) {
     return Value(214 * (d - improving));
   }
-
-  cab::Storage<MoveBlock> storage;
-  cab::Storage<MoveBlock64> storage64;
-  cab::Storage<StateBlock> storageState;
 
   // Reductions lookup table, initialized at startup
   std::shared_ptr<int> Reductions(new int[MAX_MOVES], [](int *p) { delete[] p; }); // [depth or moveNumber]
@@ -136,7 +123,7 @@ namespace {
   template<bool Root>
   uint64_t perft(Position& pos, Depth depth) {
 
-    State st(&storageState);
+    State st(&pos.this_thread()->storageState);
     ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     uint64_t cnt, nodes = 0;
@@ -691,9 +678,10 @@ namespace {
     assert(0 < depth && depth < MAX_PLY);
     assert(!(PvNode && cutNode));
 
-    Moves pv(&storage);
-    Moves64 capturesSearched(&storage64), quietsSearched(&storage64);
-    State st(&storageState);
+    Thread* thisThread = pos.this_thread();
+    Moves pv(&thisThread->storage);
+    Moves64 capturesSearched(&thisThread->storage64), quietsSearched(&thisThread->storage64);
+    State st(&thisThread->storageState);
     ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
@@ -708,7 +696,6 @@ namespace {
     int moveCount, captureCount, quietCount;
 
     // Step 1. Initialize node
-    Thread* thisThread = pos.this_thread();
     ss->inCheck        = pos.checkers();
     priorCapture       = pos.captured_piece();
     Color us           = pos.side_to_move();
@@ -1534,8 +1521,9 @@ moves_loop: // When in check, search starts from here
     assert(PvNode || (alpha == beta - 1));
     assert(depth <= 0);
 
-    Moves pv(&storage);
-    State st(&storageState);
+    Thread* thisThread = pos.this_thread();
+    Moves pv(&thisThread->storage);
+    State st(&thisThread->storageState);
     ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
@@ -1553,7 +1541,6 @@ moves_loop: // When in check, search starts from here
         ss->pv[0] = MOVE_NONE;
     }
 
-    Thread* thisThread = pos.this_thread();
     bestMove = MOVE_NONE;
     ss->inCheck = pos.checkers();
     moveCount = 0;
@@ -2082,7 +2069,7 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
 
 bool RootMove::extract_ponder_from_tt(Position& pos) {
 
-    State st(&storageState);
+    State st(&pos.this_thread()->storageState);
     ASSERT_ALIGNED(st.ptr(), Eval::NNUE::CacheLineSize);
 
     bool ttHit;
