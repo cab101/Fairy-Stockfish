@@ -110,6 +110,7 @@ struct Variant {
   bool gating = false;
   WallingRule wallingRule = NO_WALLING;
   Bitboard wallingRegion[COLOR_NB] = {AllSquares, AllSquares};
+  bool wallOrMove = false;
   bool seirawanGating = false;
   bool cambodianMoves = false;
   Bitboard diagonalLines = 0;
@@ -179,7 +180,7 @@ struct Variant {
   bool endgameEval = false;
   bool shogiStylePromotions = false;
   std::vector<Direction> connect_directions;
-
+  PieceSet connectPieceTypesTrimmed = ~NO_PIECE_SET;
   void add_piece(PieceType pt, char c, std::string betza = "", char c2 = ' ') {
       // Avoid ambiguous definition by removing existing piece with same letter
       size_t idx;
