@@ -310,7 +310,11 @@ enum WallingRule {
 };
 
 enum CapturingRule {
-  OUT, HAND, PRISON
+    OUT, HAND, PRISON
+};
+
+enum EndgameEval {
+  NO_EG_EVAL, EG_EVAL_CHESS, EG_EVAL_ANTI, EG_EVAL_ATOMIC, EG_EVAL_DUCK, EG_EVAL_MISERE, EG_EVAL_RK, EG_EVAL_NB
 };
 
 enum OptBool {

@@ -177,7 +177,7 @@ struct Variant {
   int pieceHandIndex[COLOR_NB][PIECE_NB];
   int kingSquareIndex[SQUARE_NB];
   int nnueMaxPieces;
-  bool endgameEval = false;
+  EndgameEval endgameEval = EG_EVAL_CHESS;
   bool shogiStylePromotions = false;
   std::vector<Direction> connect_directions;
   PieceSet connectPieceTypesTrimmed = ~NO_PIECE_SET;
@@ -224,6 +224,7 @@ struct Variant {
   // Reset values that always need to be redefined
   Variant* init() {
       nnueAlias = "";
+      endgameEval = EG_EVAL_CHESS;
       return this;
   }
 
