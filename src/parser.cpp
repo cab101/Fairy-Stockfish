@@ -512,7 +512,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("dropLoop", v->dropLoop);
 
     bool capturesToHand = false;
-    if (parse_attribute<false>("capturesToHand", capturesToHand)) {
+    if (parse_attribute<true>("capturesToHand", capturesToHand)) {
         v->captureType = capturesToHand ? HAND : OUT;
     }
 
