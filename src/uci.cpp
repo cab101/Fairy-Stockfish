@@ -42,24 +42,27 @@ extern vector<string> setup_bench(const Position&, istream&);
 
 namespace {
 
+    int extId = 0;
+
     void ext(Position &position) {
+        int id = extId;
         Value value = VALUE_ZERO;
-        sync_cout << "ext_position " << position.fen() << sync_endl;
-        sync_cout << "ext_moves ";
+        sync_cout << "ext " << id << " position " << position.fen() << sync_endl;
+        sync_cout << "ext " << id << " moves ";
         auto moves = MoveList<Stockfish::LEGAL>(position);
         for (const auto &m : moves) {
             std::cout << UCI::move(position, m) << " ";
         }
         std::cout << sync_endl;
-        sync_cout << "ext_player " << position.side_to_move() << sync_endl;
+        sync_cout << "ext " << id << " player " << position.side_to_move() << sync_endl;
         bool end = position.is_game_end(value, 0);
         if (end || moves.size() == 0) {
             if (!end) {
                 value = position.checkers() ? position.checkmate_value() : position.stalemate_value();
             }
-            sync_cout << "ext_state " << (end ? "1" : "2") << " " << value << sync_endl;
+            sync_cout << "ext " << id << " state " << (end ? "1" : "2") << " " << value << sync_endl;
         } else {
-            sync_cout << "ext_state 0 0" << sync_endl;
+            sync_cout << "ext " << id << " state 0 0" << sync_endl;
         }
     }
 
@@ -437,41 +440,45 @@ void UCI::loop(int argc, char* argv[]) {
       }
 
       /// extra section
-      else if (token == "ext_position") {
-          string fen;
-          while (is >> token && token != "ext_moves")
-              fen += token + " ";
-
-          states = StateListPtr(new std::deque<Stockfish::StateInfo>(1));
-          pos.set(pos.variant(), fen, false, &states->back(), Threads.main());
-
-          while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE) {
-              states->emplace_back();
-              pos.do_move(m, states->back());
-          }
-          ext(pos);
-      } else if (token == "ext_make") {
+      else if (token == "ext") {
+          is >> extId;
           is >> token;
+          if (token == "position") {
+              string fen;
+              while (is >> token && token != "moves")
+                  fen += token + " ";
 
-          if (Threads.setupStates.get()) {
-              states = std::move(Threads.setupStates);
+              states = StateListPtr(new std::deque<Stockfish::StateInfo>(1));
+              pos.set(pos.variant(), fen, false, &states->back(), Threads.main());
+
+              while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE) {
+                  states->emplace_back();
+                  pos.do_move(m, states->back());
+              }
+              ext(pos);
+          } else if (token == "make") {
+              is >> token;
+
+              if (Threads.setupStates.get()) {
+                  states = std::move(Threads.setupStates);
+              }
+              if ((m = UCI::to_move(pos, token)) != MOVE_NONE) {
+                  states->emplace_back();
+                  pos.do_move(m, states->back());
+              }
+              ext(pos);
+          } else if (token == "moves") {
+              if (Threads.setupStates.get()) {
+                  states = std::move(Threads.setupStates);
+              }
+              while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE) {
+                  states->emplace_back();
+                  pos.do_move(m, states->back());
+              }
+              ext(pos);
+          } else if (token == "update") {
+              ext(pos);
           }
-          if ((m = UCI::to_move(pos, token)) != MOVE_NONE) {
-              states->emplace_back();
-              pos.do_move(m, states->back());
-          }
-          ext(pos);
-      } else if (token == "ext_moves") {
-          if (Threads.setupStates.get()) {
-              states = std::move(Threads.setupStates);
-          }
-          while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE) {
-              states->emplace_back();
-              pos.do_move(m, states->back());
-          }
-          ext(pos);
-      } else if (token == "ext_update") {
-          ext(pos);
       }
       /// end extra
 
