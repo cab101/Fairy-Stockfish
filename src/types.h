@@ -227,22 +227,13 @@ typedef uint64_t Bitboard;
 constexpr int SQUARE_BITS = 6;
 #endif
 
-//When defined, move list will be stored in heap. Delete this if you want to use stack to store move list. Using stack can cause overflow (Segmentation Fault) when the search is too deep.
-#define USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
-
 #ifdef ALLVARS
 constexpr int MAX_MOVES = 8192;
-#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
-constexpr int MAX_PLY = 246;
-#else
-constexpr int MAX_PLY = 60;
-#endif
-/// endif USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+constexpr int MAX_PLY   = 60;
 #else
 constexpr int MAX_MOVES = 1024;
-constexpr int MAX_PLY = 246;
+constexpr int MAX_PLY   = 246;
 #endif
-/// endif ALLVARS
 
 /// A move needs 16 bits to be stored
 ///
@@ -316,6 +307,10 @@ enum EnclosingRule {
 
 enum WallingRule {
   NO_WALLING, ARROW, DUCK, EDGE, PAST, STATIC
+};
+
+enum CapturingRule {
+    OUT, HAND, PRISON
 };
 
 enum EndgameEval {
@@ -833,6 +828,17 @@ inline Move make(Square from, Square to, PieceType pt = NO_PIECE_TYPE) {
 
 constexpr Move make_drop(Square to, PieceType pt_in_hand, PieceType pt_dropped) {
   return Move((pt_in_hand << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (pt_dropped << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + DROP + to);
+}
+
+constexpr PieceType exchange_piece(Move m) {
+  return type_of(m) != DROP ? NO_PIECE_TYPE : PieceType((m >> SQUARE_BITS) & SQUARE_BIT_MASK);
+}
+
+constexpr Move make_exchange(Square to, PieceType pt_exchange, PieceType pt_in_hand, PieceType pt_dropped) {
+  return Move((pt_in_hand << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) +
+              (pt_dropped << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) +
+              (pt_exchange << SQUARE_BITS) +
+              DROP + to);
 }
 
 constexpr Move reverse_move(Move m) {

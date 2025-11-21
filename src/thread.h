@@ -32,7 +32,16 @@
 #include "search.h"
 #include "thread_win32_osx.h"
 
+#include "storage.h"
+
 namespace Stockfish {
+
+  typedef cab::Block<Move, MAX_PLY+1> MoveBlock;
+  typedef cab::Block<Move, 64> MoveBlock64;
+  typedef cab::Block<StateInfo, 1> StateBlock;
+  typedef cab::List<MoveBlock, Move> Moves;
+  typedef cab::List<MoveBlock64, Move> Moves64;
+  typedef cab::List<StateBlock , StateInfo> State;
 
 /// Thread class keeps together all the thread-related stuff. We use
 /// per-thread pawn and material hash tables so that once we get a
@@ -40,13 +49,12 @@ namespace Stockfish {
 /// to care about someone changing the entry under our feet.
 
 class Thread {
-
   std::mutex mutex;
   std::condition_variable cv;
   size_t idx;
   bool exit = false, searching = true; // Set before starting std::thread
   NativeThread stdThread;
-
+  Search::Stack stack[MAX_PLY+10];
 public:
   explicit Thread(size_t);
   virtual ~Thread();
@@ -76,8 +84,11 @@ public:
   CapturePieceToHistory captureHistory;
   ContinuationHistory continuationHistory[2][2];
   Score trend;
-};
 
+  cab::Storage<MoveBlock> storage;
+  cab::Storage<MoveBlock64> storage64;
+  cab::Storage<StateBlock> storageState;
+};
 
 /// MainThread is a derived class specific for main thread
 

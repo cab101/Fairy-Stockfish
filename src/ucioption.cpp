@@ -44,14 +44,6 @@ namespace PSQT {
 
 namespace UCI {
 
-// standard variants of XBoard/WinBoard
-std::set<string> standard_variants = {
-    "normal", "nocastle", "fischerandom", "knightmate", "3check", "makruk", "shatranj",
-    "asean", "seirawan", "crazyhouse", "bughouse", "suicide", "giveaway", "losers", "atomic",
-    "capablanca", "gothic", "janus", "caparandom", "grand", "shogi", "xiangqi", "duck",
-    "berolina", "spartan"
-};
-
 void init_variant(const Variant* v) {
     pieceMap.init(v);
     Bitboards::init_pieces();
@@ -89,24 +81,9 @@ void on_variant_change(const Option &o) {
     on_variant_set(o);
 
     const Variant* v = variants.find(o)->second;
-    // Do not send setup command for known variants
-    if (standard_variants.find(o) != standard_variants.end())
-        return;
     int pocketsize = v->pieceDrops ? (v->pocketSize ? v->pocketSize : popcount(v->pieceTypes)) : 0;
     if (CurrentProtocol == XBOARD)
     {
-        // Overwrite setup command for Janggi variants
-        auto itJanggi = variants.find("janggi");
-        if (   itJanggi != variants.end()
-            && v->variantTemplate == itJanggi->second->variantTemplate
-            && v->startFen == itJanggi->second->startFen
-            && v->pieceToCharTable == itJanggi->second->pieceToCharTable)
-        {
-            sync_cout << "setup (PH.R.AE..K.C.ph.r.ae..k.c.) 9x10+0_janggi "
-                      << "rhea1aehr/4k4/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/4K4/RHEA1AEHR w - - 0 1"
-                      << sync_endl;
-            return;
-        }
         // Send setup command
         sync_cout << "setup (" << v->pieceToCharTable << ") "
                   << v->maxFile + 1 << "x" << v->maxRank + 1

@@ -42,6 +42,30 @@ extern vector<string> setup_bench(const Position&, istream&);
 
 namespace {
 
+    int extId = 0;
+
+    void ext(Position &position) {
+        int id = extId;
+        Value value = VALUE_ZERO;
+        sync_cout << "ext " << id << " position " << position.fen() << sync_endl;
+        sync_cout << "ext " << id << " moves ";
+        auto moves = MoveList<Stockfish::LEGAL>(position);
+        for (const auto &m : moves) {
+            std::cout << UCI::move(position, m) << " ";
+        }
+        std::cout << sync_endl;
+        sync_cout << "ext " << id << " player " << position.side_to_move() << sync_endl;
+        bool end = position.is_game_end(value, 0);
+        if (end || moves.size() == 0) {
+            if (!end) {
+                value = position.checkers() ? position.checkmate_value() : position.stalemate_value();
+            }
+            sync_cout << "ext " << id << " state " << (end ? "1" : "2") << " " << value << sync_endl;
+        } else {
+            sync_cout << "ext " << id << " state 0 0" << sync_endl;
+        }
+    }
+
   // position() is called when engine receives the "position" UCI command.
   // The function sets up the position described in the given FEN string ("fen")
   // or the starting position ("startpos") and then makes the moves given in the
@@ -299,6 +323,7 @@ void UCI::loop(int argc, char* argv[]) {
   string token, cmd;
   StateListPtr states(new std::deque<StateInfo>(1));
 
+  Move m;
   assert(variants.find(Options["UCI_Variant"])->second != nullptr);
   pos.set(variants.find(Options["UCI_Variant"])->second, variants.find(Options["UCI_Variant"])->second->startFen, false, &states->back(), Threads.main());
 
@@ -413,6 +438,50 @@ void UCI::loop(int argc, char* argv[]) {
           is.seekg(0);
           position(pos, is, states);
       }
+
+      /// extra section
+      else if (token == "ext") {
+          is >> extId;
+          is >> token;
+          if (token == "position") {
+              string fen;
+              while (is >> token && token != "moves")
+                  fen += token + " ";
+
+              states = StateListPtr(new std::deque<Stockfish::StateInfo>(1));
+              pos.set(pos.variant(), fen, false, &states->back(), Threads.main());
+
+              while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE) {
+                  states->emplace_back();
+                  pos.do_move(m, states->back());
+              }
+              ext(pos);
+          } else if (token == "make") {
+              is >> token;
+
+              if (Threads.setupStates.get()) {
+                  states = std::move(Threads.setupStates);
+              }
+              if ((m = UCI::to_move(pos, token)) != MOVE_NONE) {
+                  states->emplace_back();
+                  pos.do_move(m, states->back());
+              }
+              ext(pos);
+          } else if (token == "moves") {
+              if (Threads.setupStates.get()) {
+                  states = std::move(Threads.setupStates);
+              }
+              while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE) {
+                  states->emplace_back();
+                  pos.do_move(m, states->back());
+              }
+              ext(pos);
+          } else if (token == "update") {
+              ext(pos);
+          }
+      }
+      /// end extra
+
       else if (!token.empty() && token[0] != '#')
           sync_cout << "Unknown command: " << cmd << sync_endl;
 
@@ -501,6 +570,14 @@ string UCI::dropped_piece(const Position& pos, Move m) {
       return std::string{pos.piece_to_char()[dropped_piece_type(m)]};
 }
 
+string UCI::exchange(const Position &pos, Move m) {
+  assert(type_of(m) == DROP);
+  if (exchange_piece(m) == NO_PIECE_TYPE) {
+      return std::string{};
+  }
+  assert(pos.capture_type() == PRISON);
+  return std::string{'#', pos.piece_to_char()[exchange_piece(m)]};
+}
 
 /// UCI::move() converts a Move to a string in coordinate notation (g1f3, a7a8q).
 /// The only special case is castling, where we print in the e1g1 notation in
@@ -531,8 +608,10 @@ string UCI::move(const Position& pos, Move m) {
           to = to_sq(m);
   }
 
-  string move = (type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@')
-                                    : UCI::square(pos, from)) + UCI::square(pos, to);
+  string move = (type_of(m) == DROP
+          ? UCI::dropped_piece(pos, m) + UCI::exchange(pos, m) + (CurrentProtocol == USI ? '*' : '@')
+          : UCI::square(pos, from))
+                  + UCI::square(pos, to);
 
   // Wall square
   if (pos.walling() && CurrentProtocol == XBOARD)
@@ -553,7 +632,7 @@ string UCI::move(const Position& pos, Move m) {
 
   // Wall square
   if (pos.walling() && CurrentProtocol != XBOARD)
-      move += "," + UCI::square(pos, to) + UCI::square(pos, gating_square(m));
+      move += ";" + UCI::square(pos, to) + UCI::square(pos, gating_square(m));
 
   return move;
 }

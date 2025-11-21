@@ -22,6 +22,7 @@
 #include <string>
 
 #include "types.h"
+#include "heap_object.h"
 
 namespace Stockfish {
 
@@ -99,7 +100,6 @@ constexpr Bitboard KingFlank[FILE_NB] = {
   KingSide, KingSide, KingSide ^ FileEBB
 };
 
-extern uint8_t PopCnt16[1 << 16];
 extern uint8_t SquareDistance[SQUARE_NB][SQUARE_NB];
 
 extern Bitboard SquareBB[SQUARE_NB];
@@ -143,21 +143,6 @@ struct Magic {
     return (lo * unsigned(magic) ^ hi * unsigned(magic >> 32)) >> shift;
   }
 };
-
-extern Magic RookMagicsH[SQUARE_NB];
-extern Magic RookMagicsV[SQUARE_NB];
-extern Magic BishopMagics[SQUARE_NB];
-extern Magic CannonMagicsH[SQUARE_NB];
-extern Magic CannonMagicsV[SQUARE_NB];
-extern Magic LameDabbabaMagics[SQUARE_NB];
-extern Magic HorseMagics[SQUARE_NB];
-extern Magic ElephantMagics[SQUARE_NB];
-extern Magic JanggiElephantMagics[SQUARE_NB];
-extern Magic CannonDiagMagics[SQUARE_NB];
-extern Magic NightriderMagics[SQUARE_NB];
-extern Magic GrasshopperMagicsH[SQUARE_NB];
-extern Magic GrasshopperMagicsV[SQUARE_NB];
-extern Magic GrasshopperMagicsD[SQUARE_NB];
 
 extern Magic* magics[];
 
@@ -399,25 +384,13 @@ template<> inline int distance<Square>(Square x, Square y) { return SquareDistan
 inline int edge_distance(File f, File maxFile = FILE_H) { return std::min(f, File(maxFile - f)); }
 inline int edge_distance(Rank r, Rank maxRank = RANK_8) { return std::min(r, Rank(maxRank - r)); }
 
+inline int ctz(int b);
 
 template<RiderType R>
 inline Bitboard rider_attacks_bb(Square s, Bitboard occupied) {
 
   static_assert(R != NO_RIDER && !(R & (R - 1))); // exactly one bit
-  const Magic& m =  R == RIDER_ROOK_H ? RookMagicsH[s]
-                  : R == RIDER_ROOK_V ? RookMagicsV[s]
-                  : R == RIDER_CANNON_H ? CannonMagicsH[s]
-                  : R == RIDER_CANNON_V ? CannonMagicsV[s]
-                  : R == RIDER_LAME_DABBABA ? LameDabbabaMagics[s]
-                  : R == RIDER_HORSE ? HorseMagics[s]
-                  : R == RIDER_ELEPHANT ? ElephantMagics[s]
-                  : R == RIDER_JANGGI_ELEPHANT ? JanggiElephantMagics[s]
-                  : R == RIDER_CANNON_DIAG ? CannonDiagMagics[s]
-                  : R == RIDER_NIGHTRIDER ? NightriderMagics[s]
-                  : R == RIDER_GRASSHOPPER_H ? GrasshopperMagicsH[s]
-                  : R == RIDER_GRASSHOPPER_V ? GrasshopperMagicsV[s]
-                  : R == RIDER_GRASSHOPPER_D ? GrasshopperMagicsD[s]
-                  : BishopMagics[s];
+  const Magic& m = magics[ctz(R)][s];
   return m.attacks[m.index(occupied)];
 }
 
@@ -492,37 +465,17 @@ inline Bitboard moves_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
 /// popcount() counts the number of non-zero bits in a bitboard
 
 inline int popcount(Bitboard b) {
-
-#ifndef USE_POPCNT
-
-#ifdef LARGEBOARDS
-  union { Bitboard bb; uint16_t u[8]; } v = { b };
-  return  PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]]
-        + PopCnt16[v.u[4]] + PopCnt16[v.u[5]] + PopCnt16[v.u[6]] + PopCnt16[v.u[7]];
-#else
-  union { Bitboard bb; uint16_t u[4]; } v = { b };
-  return PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]];
-#endif
-
-#elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-
-#ifdef LARGEBOARDS
-  return (int)_mm_popcnt_u64(uint64_t(b >> 64)) + (int)_mm_popcnt_u64(uint64_t(b));
-#else
-  return (int)_mm_popcnt_u64(b);
-#endif
-
-#else // Assumed gcc or compatible compiler
-
 #ifdef LARGEBOARDS
   return __builtin_popcountll(b >> 64) + __builtin_popcountll(b);
 #else
   return __builtin_popcountll(b);
 #endif
-
-#endif
 }
 
+inline int ctz(int b) {
+    assert(b);
+    return __builtin_ctz(b);
+}
 
 /// lsb() and msb() return the least/most significant bit in a non-zero bitboard
 
@@ -682,21 +635,7 @@ inline Square frontmost_sq(Color c, Bitboard b) {
 /// popcount() counts the number of non-zero bits in a piece set
 
 inline int popcount(PieceSet ps) {
-
-#ifndef USE_POPCNT
-
-  union { uint64_t bb; uint16_t u[4]; } v = { (uint64_t)ps };
-  return PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]];
-
-#elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-
-  return (int)_mm_popcnt_u64(ps);
-
-#else // Assumed gcc or compatible compiler
-
   return __builtin_popcountll(ps);
-
-#endif
 }
 
 /// lsb() and msb() return the least/most significant bit in a non-zero piece set

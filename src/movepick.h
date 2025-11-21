@@ -161,7 +161,8 @@ private:
   Value threshold;
   Depth depth;
   int ply;
-  ExtMove moves[MAX_MOVES];
+  MovesMax list;
+  ExtMove *moves;
 };
 
 } // namespace Stockfish

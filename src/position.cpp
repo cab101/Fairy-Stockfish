@@ -32,11 +32,13 @@
 #include "uci.h"
 #include "syzygy/tbprobe.h"
 
+#include "heap_object.h"
+
 using std::string;
 
 namespace Stockfish {
 
-namespace Zobrist {
+struct ZobristStruct : public virtual cab::IHeapObject {
 
   Key psq[PIECE_NB][SQUARE_NB];
   Key enpassant[FILE_NB];
@@ -46,8 +48,12 @@ namespace Zobrist {
   Key checks[COLOR_NB][CHECKS_NB];
   Key wall[SQUARE_NB];
   Key endgame[EG_EVAL_NB];
-}
 
+  ZobristStruct() : cab::IHeapObject() {}
+  virtual ~ZobristStruct() {}
+};
+
+ZobristStruct *Zobrist = new ZobristStruct();
 
 /// operator<<(Position) returns an ASCII representation of the position
 
@@ -156,31 +162,31 @@ void Position::init() {
   for (Color c : {WHITE, BLACK})
       for (PieceType pt = PAWN; pt <= KING; ++pt)
           for (Square s = SQ_A1; s <= SQ_MAX; ++s)
-              Zobrist::psq[make_piece(c, pt)][s] = rng.rand<Key>();
+              Zobrist->psq[make_piece(c, pt)][s] = rng.rand<Key>();
 
   for (File f = FILE_A; f <= FILE_MAX; ++f)
-      Zobrist::enpassant[f] = rng.rand<Key>();
+      Zobrist->enpassant[f] = rng.rand<Key>();
 
   for (int cr = NO_CASTLING; cr <= ANY_CASTLING; ++cr)
-      Zobrist::castling[cr] = rng.rand<Key>();
+      Zobrist->castling[cr] = rng.rand<Key>();
 
-  Zobrist::side = rng.rand<Key>();
-  Zobrist::noPawns = rng.rand<Key>();
+    Zobrist->side = rng.rand<Key>();
+    Zobrist->noPawns = rng.rand<Key>();
 
   for (Color c : {WHITE, BLACK})
       for (int n = 0; n < CHECKS_NB; ++n)
-          Zobrist::checks[c][n] = rng.rand<Key>();
+          Zobrist->checks[c][n] = rng.rand<Key>();
 
   for (Color c : {WHITE, BLACK})
       for (PieceType pt = PAWN; pt <= KING; ++pt)
           for (int n = 0; n < SQUARE_NB; ++n)
-              Zobrist::inHand[make_piece(c, pt)][n] = rng.rand<Key>();
+              Zobrist->inHand[make_piece(c, pt)][n] = rng.rand<Key>();
 
   for (Square s = SQ_A1; s <= SQ_MAX; ++s)
-      Zobrist::wall[s] = rng.rand<Key>();
+      Zobrist->wall[s] = rng.rand<Key>();
 
   for (int i = NO_EG_EVAL; i < EG_EVAL_NB; ++i)
-      Zobrist::endgame[i] = rng.rand<Key>();
+      Zobrist->endgame[i] = rng.rand<Key>();
 
   // Prepare the cuckoo tables
   std::memset(cuckoo, 0, sizeof(cuckoo));
@@ -195,7 +201,7 @@ void Position::init() {
               if ((type_of(pc) != PAWN) && (attacks_bb(c, type_of(pc), s1, 0) & s2))
               {
                   Move move = make_move(s1, s2);
-                  Key key = Zobrist::psq[pc][s1] ^ Zobrist::psq[pc][s2] ^ Zobrist::side;
+                  Key key = Zobrist->psq[pc][s1] ^ Zobrist->psq[pc][s2] ^ Zobrist->side;
                   int i = H1(key);
                   while (true)
                   {
@@ -216,7 +222,7 @@ void Position::init() {
 }
 
 Key Position::material_key(EndgameEval e) const {
-  return st->materialKey ^ Zobrist::endgame[e];
+  return st->materialKey ^ Zobrist->endgame[e];
 }
 
 
@@ -330,14 +336,23 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
       }
   }
   // Pieces in hand
-  if (!isspace(token))
-      while ((ss >> token) && !isspace(token))
-      {
-          if (token == ']')
+  if (!isspace(token)) {
+      bool prison = false;
+      while ((ss >> token) && !isspace(token)) {
+          if (token == ']') {
               continue;
-          else if ((idx = piece_to_char().find(token)) != string::npos)
-              add_to_hand(Piece(idx));
+          } else if (token == '#') {
+              prison = true;
+              continue;
+          } else if ((idx = piece_to_char().find(token)) != string::npos) {
+              if (prison) {
+                  add_to_prison(Piece(idx));
+              } else {
+                  add_to_hand(Piece(idx));
+              }
+          }
       }
+  }
 
   // 2. Active color
   ss >> token;
@@ -537,6 +552,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   chess960 = isChess960 || v->chess960;
   tsumeMode = Options["TsumeMode"];
   thisThread = th;
+  updatePawnCheckZone();
   set_state(st);
 
   assert(pos_is_ok());
@@ -616,7 +632,7 @@ void Position::set_check_info(StateInfo* si) const {
 void Position::set_state(StateInfo* si) const {
 
   si->key = si->materialKey = 0;
-  si->pawnKey = Zobrist::noPawns;
+  si->pawnKey = Zobrist->noPawns;
   si->nonPawnMaterial[WHITE] = si->nonPawnMaterial[BLACK] = VALUE_ZERO;
   si->checkersBB = count<KING>(sideToMove) ? attackers_to(square<KING>(sideToMove), ~sideToMove) : Bitboard(0);
   si->move = MOVE_NONE;
@@ -627,25 +643,25 @@ void Position::set_state(StateInfo* si) const {
   {
       Square s = pop_lsb(b);
       Piece pc = piece_on(s);
-      si->key ^= Zobrist::psq[pc][s];
+      si->key ^= Zobrist->psq[pc][s];
 
       if (!pc)
-          si->key ^= Zobrist::wall[s];
+          si->key ^= Zobrist->wall[s];
 
       else if (type_of(pc) == PAWN)
-          si->pawnKey ^= Zobrist::psq[pc][s];
+          si->pawnKey ^= Zobrist->psq[pc][s];
 
       else if (type_of(pc) != KING)
           si->nonPawnMaterial[color_of(pc)] += PieceValue[MG][pc];
   }
 
   for (Bitboard b = si->epSquares; b; )
-      si->key ^= Zobrist::enpassant[file_of(pop_lsb(b))];
+      si->key ^= Zobrist->enpassant[file_of(pop_lsb(b))];
 
   if (sideToMove == BLACK)
-      si->key ^= Zobrist::side;
+      si->key ^= Zobrist->side;
 
-  si->key ^= Zobrist::castling[si->castlingRights];
+  si->key ^= Zobrist->castling[si->castlingRights];
 
   for (Color c : {WHITE, BLACK})
       for (PieceType pt = PAWN; pt <= KING; ++pt)
@@ -653,15 +669,15 @@ void Position::set_state(StateInfo* si) const {
           Piece pc = make_piece(c, pt);
 
           for (int cnt = 0; cnt < pieceCount[pc]; ++cnt)
-              si->materialKey ^= Zobrist::psq[pc][cnt];
+              si->materialKey ^= Zobrist->psq[pc][cnt];
 
           if (piece_drops() || seirawan_gating())
-              si->key ^= Zobrist::inHand[pc][pieceCountInHand[c][pt]];
+              si->key ^= Zobrist->inHand[pc][pieceCountInHand[c][pt]];
       }
 
   if (check_counting())
       for (Color c : {WHITE, BLACK})
-          si->key ^= Zobrist::checks[c][si->checksRemaining[c]];
+          si->key ^= Zobrist->checks[c][si->checksRemaining[c]];
 }
 
 
@@ -749,15 +765,27 @@ string Position::fen(bool sfen, bool showPromoted, int countStarted, std::string
   if (!free_drops() && (piece_drops() || seirawan_gating()))
   {
       ss << '[';
-      if (holdings != "-")
+      if (holdings != "-") {
           ss << holdings;
-      else
-          for (Color c : {WHITE, BLACK})
-              for (PieceType pt = KING; pt >= PAWN; --pt)
-              {
+      } else {
+          for (Color c: {WHITE, BLACK})
+              for (PieceType pt = KING; pt >= PAWN; --pt) {
                   assert(pieceCountInHand[c][pt] >= 0);
                   ss << std::string(pieceCountInHand[c][pt], piece_to_char()[make_piece(c, pt)]);
               }
+          if (capture_type() == PRISON &&
+              (count_in_prison(WHITE, ALL_PIECES) > 0 || count_in_prison(BLACK, ALL_PIECES) > 0)) {
+              ss << '#';
+              for (Color c: {BLACK, WHITE})
+                  for (PieceType pt = KING; pt >= PAWN; --pt) {
+                      assert(pieceCountInPrison[c][pt] >= 0);
+                      int n = pieceCountInPrison[c][pt];
+                      if (n > 0) {
+                          ss << std::string(n, piece_to_char()[make_piece(~c, pt)]);
+                      }
+                  }
+          }
+      }
       ss << ']';
   }
 
@@ -928,7 +956,7 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied, Color c, Bitboard j
   // Use a faster version for variants with moderate rule variations
   if (var->fastAttacks)
   {
-      return  (pawn_attacks_bb(~c, s)          & pieces(c, PAWN))
+      return  (pawn_attacks_bb(~c, s)          & pieces(c, PAWN) & ~pawnCannotCheckZone[c])
             | (attacks_bb<KNIGHT>(s)           & pieces(c, KNIGHT, ARCHBISHOP, CHANCELLOR))
             | (attacks_bb<  ROOK>(s, occupied) & pieces(c, ROOK, QUEEN, CHANCELLOR))
             | (attacks_bb<BISHOP>(s, occupied) & pieces(c, BISHOP, QUEEN, ARCHBISHOP))
@@ -1310,7 +1338,11 @@ bool Position::pseudo_legal(const Move m) const {
       return   piece_drops()
             && pc != NO_PIECE
             && color_of(pc) == us
-            && (can_drop(us, in_hand_piece_type(m)) || (two_boards() && allow_virtual_drop(us, type_of(pc))))
+            && (can_drop(us, in_hand_piece_type(m))
+                || (two_boards() && allow_virtual_drop(us, type_of(pc)))
+                || (capture_type() == PRISON && exchange_piece(m) != NO_PIECE_TYPE
+                        && count_in_prison(us, exchange_piece(m)) > 0
+                        && count_in_prison(~us, in_hand_piece_type(m)) > 0))
             && (drop_region(us, type_of(pc)) & ~pieces() & to)
             && (   type_of(pc) == in_hand_piece_type(m)
                 || (drop_promoted() && type_of(pc) == promoted_piece_type(in_hand_piece_type(m))));
@@ -1544,7 +1576,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
 #ifndef NO_THREADS
   thisThread->nodes.fetch_add(1, std::memory_order_relaxed);
 #endif
-  Key k = st->key ^ Zobrist::side;
+  Key k = st->key ^ Zobrist->side;
 
   // Copy some fields of the old state to our new StateInfo object except the
   // ones which are going to be recalculated from scratch anyway and then switch
@@ -1574,6 +1606,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
   Piece captured = piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
+  PieceType exchanged = exchange_piece(m);
   if (to == from)
   {
       assert((type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
@@ -1588,7 +1621,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   assert(type_of(captured) != KING);
 
   if (check_counting() && givesCheck)
-      k ^= Zobrist::checks[us][st->checksRemaining[us]] ^ Zobrist::checks[us][--(st->checksRemaining[us])];
+      k ^= Zobrist->checks[us][st->checksRemaining[us]] ^ Zobrist->checks[us][--(st->checksRemaining[us])];
 
   if (type_of(m) == CASTLING)
   {
@@ -1598,7 +1631,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       Square rfrom, rto;
       do_castling<true>(us, from, to, rfrom, rto);
 
-      k ^= Zobrist::psq[captured][rfrom] ^ Zobrist::psq[captured][rto];
+      k ^= Zobrist->psq[captured][rfrom] ^ Zobrist->psq[captured][rto];
       captured = NO_PIECE;
   }
 
@@ -1619,7 +1652,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // If the captured piece is a pawn, update pawn hash key, otherwise
       // update non-pawn material.
       if (type_of(captured) == PAWN)
-          st->pawnKey ^= Zobrist::psq[captured][capsq];
+          st->pawnKey ^= Zobrist->psq[captured][capsq];
       else
           st->nonPawnMaterial[them] -= PieceValue[MG][captured];
 
@@ -1638,14 +1671,14 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
 
       if (type_of(m) == EN_PASSANT)
           board[capsq] = NO_PIECE;
-      if (captures_to_hand())
+      if (capture_type() == HAND)
       {
           Piece pieceToHand = !capturedPromoted || drop_loop() ? ~captured
                              : unpromotedCaptured ? ~unpromotedCaptured
                                                   : make_piece(~color_of(captured), main_promotion_pawn_type(color_of(captured)));
           add_to_hand(pieceToHand);
-          k ^=  Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)] - 1]
-              ^ Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)]];
+          k ^= Zobrist->inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)] - 1]
+               ^ Zobrist->inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)]];
 
           if (Eval::useNNUE)
           {
@@ -1653,12 +1686,23 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
               dp.handCount[1] = pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)];
           }
       }
+      else if (capture_type() == PRISON)
+      {
+          Piece pieceToPrison = !capturedPromoted || drop_loop()
+                  ? captured
+                  : unpromotedCaptured
+                      ? unpromotedCaptured
+                      : make_piece(color_of(captured), promotion_pawn_type(color_of(captured)));
+          int n = add_to_prison(pieceToPrison);
+          k ^= Zobrist->inHand[pieceToPrison][n - 1]
+               ^ Zobrist->inHand[pieceToPrison][n];
+      }
       else if (Eval::useNNUE)
           dp.handPiece[1] = NO_PIECE;
 
       // Update material hash key and prefetch access to materialTable
-      k ^= Zobrist::psq[captured][capsq];
-      st->materialKey ^= Zobrist::psq[captured][pieceCount[captured]];
+      k ^= Zobrist->psq[captured][capsq];
+      st->materialKey ^= Zobrist->psq[captured][pieceCount[captured]];
 #ifndef NO_THREADS
       prefetch(thisThread->materialTable[material_key(var->endgameEval)]);
 #endif
@@ -1670,16 +1714,18 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   if (type_of(m) == DROP)
   {
       Piece pc_hand = make_piece(us, in_hand_piece_type(m));
-      k ^=  Zobrist::psq[pc][to]
-          ^ Zobrist::inHand[pc_hand][pieceCountInHand[color_of(pc_hand)][type_of(pc_hand)] - 1]
-          ^ Zobrist::inHand[pc_hand][pieceCountInHand[color_of(pc_hand)][type_of(pc_hand)]];
+      // exchanging means that drop is not from hand (but from prison)
+      int n = pieceCountInHand[color_of(pc_hand)][type_of(pc_hand)] + (exchanged != NO_PIECE_TYPE);
+      k ^= Zobrist->psq[pc][to]
+           ^ Zobrist->inHand[pc_hand][n - 1]
+           ^ Zobrist->inHand[pc_hand][n];
 
       // Reset rule 50 counter for irreversible drops
       st->rule50 = 0;
   }
   else
   {
-      k ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
+      k ^= Zobrist->psq[pc][from] ^ Zobrist->psq[pc][to];
 
       // Reset rule 50 draw counter for irreversible moves
       // - irreversible pawn/piece promotions
@@ -1693,12 +1739,12 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
 
   // Reset en passant squares
   while (st->epSquares)
-      k ^= Zobrist::enpassant[file_of(pop_lsb(st->epSquares))];
+      k ^= Zobrist->enpassant[file_of(pop_lsb(st->epSquares))];
 
   // Update castling rights if needed
   if (type_of(m) != DROP && !is_pass(m) && st->castlingRights && (castlingRightsMask[from] | castlingRightsMask[to]))
   {
-      k ^= Zobrist::castling[st->castlingRights];
+      k ^= Zobrist->castling[st->castlingRights];
       st->castlingRights &= ~(castlingRightsMask[from] | castlingRightsMask[to]);
 
       // Remove castling rights from opponent on the same side if oppositeCastling
@@ -1707,7 +1753,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
         bool kingSide = to > from;
         st->castlingRights &= ~(~us & (kingSide ? KING_SIDE : QUEEN_SIDE));
       }
-      k ^= Zobrist::castling[st->castlingRights];
+      k ^= Zobrist->castling[st->castlingRights];
   }
 
   // Flip enclosed pieces
@@ -1740,14 +1786,14 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
 
           // remove opponent's piece
           remove_piece(s);
-          k ^= Zobrist::psq[flipped][s];
-          st->materialKey ^= Zobrist::psq[flipped][pieceCount[flipped]];
+          k ^= Zobrist->psq[flipped][s];
+          st->materialKey ^= Zobrist->psq[flipped][pieceCount[flipped]];
           st->nonPawnMaterial[them] -= PieceValue[MG][flipped];
 
           // add our piece
           put_piece(resulting, s);
-          k ^= Zobrist::psq[resulting][s];
-          st->materialKey ^= Zobrist::psq[resulting][pieceCount[resulting]-1];
+          k ^= Zobrist->psq[resulting][s];
+          st->materialKey ^= Zobrist->psq[resulting][pieceCount[resulting] - 1];
           st->nonPawnMaterial[us] += PieceValue[MG][resulting];
       }
   }
@@ -1765,8 +1811,8 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           dp.to[0] = to;
       }
 
-      drop_piece(make_piece(us, in_hand_piece_type(m)), pc, to);
-      st->materialKey ^= Zobrist::psq[pc][pieceCount[pc]-1];
+      drop_piece(make_piece(us, in_hand_piece_type(m)), pc, to, exchanged);
+      st->materialKey ^= Zobrist->psq[pc][pieceCount[pc] - 1];
       if (type_of(pc) != PAWN)
           st->nonPawnMaterial[us] += PieceValue[MG][pc];
       // Set castling rights for dropped king or rook
@@ -1821,6 +1867,10 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           st->promotionPawn = piece_on(to);
           remove_piece(to);
           put_piece(promotion, to, true, type_of(m) == PIECE_PROMOTION ? pc : NO_PIECE);
+          if (prison_pawn_promotion() && type_of(m) == PROMOTION) {
+              add_to_prison(st->promotionPawn);
+              remove_from_prison(promotion);
+          }
 
           if (Eval::useNNUE)
           {
@@ -1835,10 +1885,10 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           }
 
           // Update hash keys
-          k ^= Zobrist::psq[pc][to] ^ Zobrist::psq[promotion][to];
-          st->pawnKey ^= Zobrist::psq[pc][to];
-          st->materialKey ^=  Zobrist::psq[promotion][pieceCount[promotion]-1]
-                            ^ Zobrist::psq[pc][pieceCount[pc]];
+          k ^= Zobrist->psq[pc][to] ^ Zobrist->psq[promotion][to];
+          st->pawnKey ^= Zobrist->psq[pc][to];
+          st->materialKey ^= Zobrist->psq[promotion][pieceCount[promotion] - 1]
+                             ^ Zobrist->psq[pc][pieceCount[pc]];
 
           // Update material
           st->nonPawnMaterial[us] += PieceValue[MG][promotion];
@@ -1854,7 +1904,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
               && !(walling() && gating_square(m) == to - pawn_push(us)))
           {
               st->epSquares |= to - pawn_push(us);
-              k ^= Zobrist::enpassant[file_of(to)];
+              k ^= Zobrist->enpassant[file_of(to)];
           }
           if (   std::abs(int(to) - int(from)) == 3 * NORTH
               && (var->enPassantRegion[them] & (to - 2 * pawn_push(us)))
@@ -1862,12 +1912,12 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
               && !(walling() && gating_square(m) == to - 2 * pawn_push(us)))
           {
               st->epSquares |= to - 2 * pawn_push(us);
-              k ^= Zobrist::enpassant[file_of(to)];
+              k ^= Zobrist->enpassant[file_of(to)];
           }
       }
 
       // Update pawn hash key
-      st->pawnKey ^= (type_of(m) != DROP ? Zobrist::psq[pc][from] : 0) ^ Zobrist::psq[pc][to];
+      st->pawnKey ^= (type_of(m) != DROP ? Zobrist->psq[pc][from] : 0) ^ Zobrist->psq[pc][to];
   }
   else if (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION)
   {
@@ -1890,9 +1940,9 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
 
       // Update hash keys
-      k ^= Zobrist::psq[pc][to] ^ Zobrist::psq[promotion][to];
-      st->materialKey ^=  Zobrist::psq[promotion][pieceCount[promotion]-1]
-                        ^ Zobrist::psq[pc][pieceCount[pc]];
+      k ^= Zobrist->psq[pc][to] ^ Zobrist->psq[promotion][to];
+      st->materialKey ^= Zobrist->psq[promotion][pieceCount[promotion] - 1]
+                         ^ Zobrist->psq[pc][pieceCount[pc]];
 
       // Update material
       st->nonPawnMaterial[us] += PieceValue[MG][promotion] - PieceValue[MG][pc];
@@ -1917,9 +1967,9 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
 
       // Update hash keys
-      k ^= Zobrist::psq[pc][to] ^ Zobrist::psq[demotion][to];
-      st->materialKey ^=  Zobrist::psq[demotion][pieceCount[demotion]-1]
-                        ^ Zobrist::psq[pc][pieceCount[pc]];
+      k ^= Zobrist->psq[pc][to] ^ Zobrist->psq[demotion][to];
+      st->materialKey ^= Zobrist->psq[demotion][pieceCount[demotion] - 1]
+                         ^ Zobrist->psq[pc][pieceCount[pc]];
 
       // Update material
       st->nonPawnMaterial[us] += PieceValue[MG][demotion] - PieceValue[MG][pc];
@@ -1931,7 +1981,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       assert(type_of(pc) != PAWN);
       st->epSquares = between_bb(from, to) & var->enPassantRegion[them];
       for (Bitboard b = st->epSquares; b; )
-          k ^= Zobrist::enpassant[file_of(pop_lsb(b))];
+          k ^= Zobrist->enpassant[file_of(pop_lsb(b))];
   }
 
   // Set capture piece
@@ -1958,8 +2008,8 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       remove_from_hand(gating_piece);
 
       st->gatesBB[us] ^= gate;
-      k ^= Zobrist::psq[gating_piece][gate];
-      st->materialKey ^= Zobrist::psq[gating_piece][pieceCount[gating_piece]];
+      k ^= Zobrist->psq[gating_piece][gate];
+      st->materialKey ^= Zobrist->psq[gating_piece][pieceCount[gating_piece]];
       st->nonPawnMaterial[us] += PieceValue[MG][gating_piece];
   }
 
@@ -2028,9 +2078,16 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
               Piece pieceToHand = !capturedPromoted || drop_loop() ? ~bpc
                                  : unpromotedCaptured ? ~unpromotedCaptured
                                                       : make_piece(~color_of(bpc), PAWN);
-              add_to_hand(pieceToHand);
-              k ^=  Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)] - 1]
-                  ^ Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)]];
+              int n;
+              if (capture_type() == PRISON) {
+                  pieceToHand = ~pieceToHand;
+                  n = add_to_prison(pieceToHand);
+              } else {
+                  add_to_hand(pieceToHand);
+                  n = pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)];
+              }
+              k ^= Zobrist->inHand[pieceToHand][n - 1]
+                   ^ Zobrist->inHand[pieceToHand][n];
 
               if (Eval::useNNUE)
               {
@@ -2040,17 +2097,17 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           }
 
           // Update material hash key
-          k ^= Zobrist::psq[bpc][bsq];
-          st->materialKey ^= Zobrist::psq[bpc][pieceCount[bpc]];
+          k ^= Zobrist->psq[bpc][bsq];
+          st->materialKey ^= Zobrist->psq[bpc][pieceCount[bpc]];
           if (type_of(bpc) == PAWN)
-              st->pawnKey ^= Zobrist::psq[bpc][bsq];
+              st->pawnKey ^= Zobrist->psq[bpc][bsq];
 
           // Update castling rights if needed
           if (st->castlingRights && castlingRightsMask[bsq])
           {
-             k ^= Zobrist::castling[st->castlingRights];
+             k ^= Zobrist->castling[st->castlingRights];
              st->castlingRights &= ~castlingRightsMask[bsq];
-             k ^= Zobrist::castling[st->castlingRights];
+             k ^= Zobrist->castling[st->castlingRights];
           }
 
           // Make a wall square where the piece was
@@ -2058,7 +2115,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           {
               st->wallSquares |= bsq;
               byTypeBB[ALL_PIECES] |= bsq;
-              k ^= Zobrist::wall[bsq];
+              k ^= Zobrist->wall[bsq];
           }
       }
   }
@@ -2073,19 +2130,20 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           Bitboard b = st->previous->wallSquares;
           byTypeBB[ALL_PIECES] ^= b;
           while (b)
-              k ^= Zobrist::wall[pop_lsb(b)];
+              k ^= Zobrist->wall[pop_lsb(b)];
           st->wallSquares = 0;
       }
       st->wallSquares |= gating_square(m);
       byTypeBB[ALL_PIECES] |= gating_square(m);
-      k ^= Zobrist::wall[gating_square(m)];
+      k ^= Zobrist->wall[gating_square(m)];
   }
 
+  updatePawnCheckZone();
   // Update the key with the final value
   st->key = k;
   // Calculate checkers bitboard (if move gives check)
   st->checkersBB = givesCheck ? attackers_to(square<KING>(them), us) & pieces(us) : Bitboard(0);
-  assert(givesCheck == bool(st->checkersBB));
+  assert(givesCheck == bool(st->checkersBB) || givesCheck && var->prisonPawnPromotion);
 
   sideToMove = ~sideToMove;
 
@@ -2143,6 +2201,7 @@ void Position::undo_move(Move m) {
   Square from = from_sq(m);
   Square to = to_sq(m);
   Piece pc = piece_on(to);
+  PieceType exchange = exchange_piece(m);
 
   assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m)
          || (type_of(m) == PROMOTION && sittuyin_promotion())
@@ -2168,9 +2227,15 @@ void Position::undo_move(Move m) {
           if (bpc)
           {
               put_piece(bpc, bsq, isPromoted, st->demotedBycatch & bsq ? unpromotedBpc : NO_PIECE);
-              if (captures_to_hand())
-                  remove_from_hand(!drop_loop() && (st->promotedBycatch & bsq) ? make_piece(~color_of(unpromotedBpc), PAWN)
-                                                                               : ~unpromotedBpc);
+              if (capture_type() == HAND) {
+                  remove_from_hand(!drop_loop() && (st->promotedBycatch & bsq)
+                                    ? make_piece(~color_of(unpromotedBpc), PAWN)
+                                    : ~unpromotedBpc);
+              } else if (capture_type() == PRISON) {
+                  remove_from_prison(!drop_loop() && (st->promotedBycatch & bsq)
+                                    ? make_piece(color_of(unpromotedBpc), PAWN)
+                                    : unpromotedBpc);
+              }
           }
       }
       // Reset piece since it exploded itself
@@ -2194,6 +2259,10 @@ void Position::undo_move(Move m) {
       assert(type_of(pc) >= KNIGHT && type_of(pc) < KING);
       assert(type_of(st->promotionPawn) == main_promotion_pawn_type(us) || !captures_to_hand());
 
+      if (prison_pawn_promotion() && type_of(st->promotionPawn) == PAWN) {
+          remove_from_prison(st->promotionPawn);
+          add_to_prison(pc);
+      }
       remove_piece(to);
       pc = st->promotionPawn;
       put_piece(pc, to);
@@ -2221,7 +2290,7 @@ void Position::undo_move(Move m) {
   else
   {
       if (type_of(m) == DROP)
-          undrop_piece(make_piece(us, in_hand_piece_type(m)), to); // Remove the dropped piece
+          undrop_piece(make_piece(us, in_hand_piece_type(m)), to, exchange); // Remove the dropped piece
       else
           move_piece(to, from); // Put the piece back at the source square
 
@@ -2239,10 +2308,19 @@ void Position::undo_move(Move m) {
           }
 
           put_piece(st->capturedPiece, capsq, st->capturedpromoted, st->unpromotedCapturedPiece); // Restore the captured piece
-          if (captures_to_hand())
-              remove_from_hand(!drop_loop() && st->capturedpromoted ? (st->unpromotedCapturedPiece ? ~st->unpromotedCapturedPiece
-                                                                                                   : make_piece(~color_of(st->capturedPiece), main_promotion_pawn_type(us)))
-                                                                    : ~st->capturedPiece);
+          if (capture_type() == HAND) {
+              remove_from_hand(!drop_loop() && st->capturedpromoted
+                               ? (st->unpromotedCapturedPiece
+                                  ? ~st->unpromotedCapturedPiece
+                                  : make_piece(~color_of(st->capturedPiece), main_promotion_pawn_type(us)))
+                               : ~st->capturedPiece);
+          } else if (capture_type() == PRISON) {
+              remove_from_prison(!drop_loop() && st->capturedpromoted
+                               ? (st->unpromotedCapturedPiece
+                                  ? st->unpromotedCapturedPiece
+                                  : make_piece(color_of(st->capturedPiece), main_promotion_pawn_type(us)))
+                               : st->capturedPiece);
+          }
       }
   }
 
@@ -2320,9 +2398,9 @@ void Position::do_null_move(StateInfo& newSt) {
   st->accumulator.computed[BLACK] = false;
 
   while (st->epSquares)
-      st->key ^= Zobrist::enpassant[file_of(pop_lsb(st->epSquares))];
+      st->key ^= Zobrist->enpassant[file_of(pop_lsb(st->epSquares))];
 
-  st->key ^= Zobrist::side;
+  st->key ^= Zobrist->side;
   prefetch(TT.first_entry(key()));
 
   ++st->rule50;
@@ -2359,26 +2437,37 @@ Key Position::key_after(Move m) const {
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
   Piece captured = piece_on(to);
-  Key k = st->key ^ Zobrist::side;
+  Key k = st->key ^ Zobrist->side;
 
   if (captured)
   {
-      k ^= Zobrist::psq[captured][to];
-      if (captures_to_hand())
-      {
-          Piece removeFromHand = !drop_loop() && is_promoted(to) ? make_piece(~color_of(captured), main_promotion_pawn_type(color_of(captured))) : ~captured;
-          k ^= Zobrist::inHand[removeFromHand][pieceCountInHand[color_of(removeFromHand)][type_of(removeFromHand)] + 1]
-              ^ Zobrist::inHand[removeFromHand][pieceCountInHand[color_of(removeFromHand)][type_of(removeFromHand)]];
+      k ^= Zobrist->psq[captured][to];
+      if (captures_to_hand()) {
+          Piece removedPiece = !drop_loop() && is_promoted(to)
+                               ? make_piece(~color_of(captured), main_promotion_pawn_type(color_of(captured)))
+                               : ~captured;
+          int n;
+          if (capture_type() == HAND) {
+              n = pieceCountInHand[color_of(removedPiece)][type_of(removedPiece)];
+          } else {
+              n = pieceCountInPrison[color_of(removedPiece)][type_of(removedPiece)];
+              removedPiece = ~removedPiece;
+          }
+          k ^= Zobrist->inHand[removedPiece][n + 1]
+               ^ Zobrist->inHand[removedPiece][n];
       }
   }
   if (type_of(m) == DROP)
   {
       Piece pc_hand = make_piece(sideToMove, in_hand_piece_type(m));
-      return k ^ Zobrist::psq[pc][to] ^ Zobrist::inHand[pc_hand][pieceCountInHand[color_of(pc_hand)][type_of(pc_hand)]]
-            ^ Zobrist::inHand[pc_hand][pieceCountInHand[color_of(pc_hand)][type_of(pc_hand)] - 1];
+      PieceType exchanged = exchange_piece(m);
+      int n = pieceCountInHand[color_of(pc_hand)][type_of(pc_hand)] + (exchanged != NO_PIECE_TYPE);
+      return k ^ Zobrist->psq[pc][to]
+             ^ Zobrist->inHand[pc_hand][n]
+             ^ Zobrist->inHand[pc_hand][n - 1];
   }
 
-  return k ^ Zobrist::psq[pc][to] ^ Zobrist::psq[pc][from];
+  return k ^ Zobrist->psq[pc][to] ^ Zobrist->psq[pc][from];
 }
 
 
@@ -2957,6 +3046,13 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
           return true;
       }
   }
+  if (var->prisonPawnPromotion &&
+      (pawn_attacks_bb(~sideToMove, square<KING>(~sideToMove))
+       & pieces(sideToMove, PAWN)
+       & ~pawnCannotCheckZone[sideToMove]) ){
+      result = mate_in(ply);
+      return true;
+  }
 
   return false;
 }
@@ -3263,6 +3359,31 @@ void Position::flip() {
   assert(pos_is_ok());
 }
 
+void Position::updatePawnCheckZone() {
+    if (!var->prisonPawnPromotion) {
+        pawnCannotCheckZone[WHITE] = Bitboard(0);
+        pawnCannotCheckZone[BLACK] = Bitboard(0);
+        return;
+    }
+    for (Color color : { BLACK, WHITE }) {
+        if (count<KING>(~color) == 0) {
+            pawnCannotCheckZone[color] = Bitboard(0);
+        } else {
+            bool canPromotion = false;
+            for (PieceSet prom = promotion_piece_types(color) & rescueFor(PAWN); prom; ) {
+                PieceType pt = pop_lsb(prom);
+                if (count_in_prison(~color, pt) > 0) {
+                    canPromotion = true;
+                    break;
+                }
+            }
+            Bitboard pz = promotion_zone(color);
+            pawnCannotCheckZone[color] = canPromotion
+                    ? Bitboard(0)
+                    : color == WHITE ? shift(SOUTH, pz) : shift(NORTH, pz);
+        }
+    }
+}
 
 /// Position::pos_is_ok() performs some consistency checks for the
 /// position object and raises an asserts if something wrong is detected.

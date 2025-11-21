@@ -287,6 +287,23 @@ namespace {
         v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | ROOK | BISHOP | CUSTOM_PIECE_1;
         return v;
     }
+
+    Variant* cavalry_variant() {
+        Variant* v = chess_variant_base()->init();
+        v->pieceToCharTable = "PNBR..............QKpnbr..............qk";
+        v->remove_piece(QUEEN);
+        v->remove_piece(ROOK);
+        v->remove_piece(KNIGHT);
+        v->remove_piece(BISHOP);
+        v->add_piece(AMAZON, 'q');
+        v->add_piece(CHANCELLOR, 'r');
+        v->add_piece(CUSTOM_PIECE_1, 'n', "NN");
+        v->add_piece(ARCHBISHOP, 'b');
+        v->castlingRookPieces[WHITE] = v->castlingRookPieces[BLACK] = piece_set(CHANCELLOR);
+        v->promotionPieceTypes[WHITE] = piece_set(AMAZON) | CHANCELLOR | ARCHBISHOP | CUSTOM_PIECE_1;
+        v->promotionPieceTypes[BLACK] = piece_set(AMAZON) | CHANCELLOR | ARCHBISHOP | CUSTOM_PIECE_1;
+        return v;
+    }
     // Grasshopper chess
     // https://en.wikipedia.org/wiki/Grasshopper_chess
     Variant* grasshopper_variant() {
@@ -622,7 +639,7 @@ namespace {
         v->variantTemplate = "crazyhouse";
         v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[] w KQkq - 0 1";
         v->pieceDrops = true;
-        v->capturesToHand = true;
+        v->captureType = HAND;
         return v;
     }
     // Loop chess
@@ -643,6 +660,20 @@ namespace {
         v->nnueAlias = "crazyhouse";
         return v;
     }
+    // Almost hostage chess
+    // https://en.wikipedia.org/wiki/Hostage_chess
+    Variant* hostage_variant() {
+        Variant* v = loop_variant()->init();
+        v->nnueAlias = "";
+        v->captureType = PRISON;
+        v->prisonPawnPromotion = true;
+        v->hostageExchange[QUEEN]  = piece_set(QUEEN);
+        v->hostageExchange[ROOK]   = piece_set(ROOK) | QUEEN;
+        v->hostageExchange[KNIGHT] = piece_set(KNIGHT) | BISHOP | ROOK | QUEEN;
+        v->hostageExchange[BISHOP] = piece_set(KNIGHT) | BISHOP | ROOK | QUEEN;
+        v->hostageExchange[PAWN]   = piece_set(PAWN) | KNIGHT | BISHOP | ROOK | QUEEN;
+        return v;
+    }
     // Bughouse
     // A four player variant where captured pieces are introduced on the other board
     // https://en.wikipedia.org/wiki/Bughouse_chess
@@ -650,7 +681,7 @@ namespace {
         Variant* v = crazyhouse_variant()->init();
         v->variantTemplate = "bughouse";
         v->twoBoards = true;
-        v->capturesToHand = false;
+        v->captureType = OUT;
         v->stalemateValue = -VALUE_MATE;
         return v;
     }
@@ -677,7 +708,7 @@ namespace {
         v->pocketSize = 2;
         v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Nn] w KQkq - 0 1";
         v->pieceDrops = true;
-        v->capturesToHand = false;
+        v->captureType = OUT;
         return v;
     }
     // Placement/Pre-chess
@@ -689,7 +720,7 @@ namespace {
         v->startFen = "8/pppppppp/8/8/8/8/PPPPPPPP/8[KQRRBBNNkqrrbbnn] w - - 0 1";
         v->mustDrop = true;
         v->pieceDrops = true;
-        v->capturesToHand = false;
+        v->captureType = OUT;
         v->dropRegion[WHITE] = Rank1BB;
         v->dropRegion[BLACK] = Rank8BB;
         v->dropOppositeColoredBishop = true;
@@ -708,7 +739,7 @@ namespace {
         v->add_piece(MET, 'f');
         v->mustDrop = true;
         v->pieceDrops = true;
-        v->capturesToHand = false;
+        v->captureType = OUT;
         v->dropRegion[WHITE] = Rank1BB | Rank2BB | Rank3BB;
         v->dropRegion[BLACK] = Rank8BB | Rank7BB | Rank6BB;
         v->sittuyinRookDrop = true;
@@ -744,7 +775,7 @@ namespace {
         Variant* v = seirawan_variant()->init();
         v->variantTemplate = "crazyhouse";
         v->pieceDrops = true;
-        v->capturesToHand = true;
+        v->captureType = HAND;
         return v;
     }
     // Dragon Chess
@@ -760,7 +791,7 @@ namespace {
         v->add_piece(ARCHBISHOP, 'd');
         v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Dd] w KQkq - 0 1";
         v->pieceDrops = true;
-        v->capturesToHand = false;
+        v->captureType = OUT;
         v->dropRegion[WHITE] = Rank1BB;
         v->dropRegion[BLACK] = Rank8BB;
         v->promotionPieceTypes[WHITE] = piece_set(ARCHBISHOP) | QUEEN | ROOK | BISHOP | KNIGHT;
@@ -795,7 +826,7 @@ namespace {
         v->add_piece(KING, 'k');
         v->startFen = "rbsgk/4p/5/P4/KGSBR[-] w 0 1";
         v->pieceDrops = true;
-        v->capturesToHand = true;
+        v->captureType = HAND;
         v->promotionRegion[WHITE] = Rank5BB;
         v->promotionRegion[BLACK] = Rank1BB;
         v->doubleStep = false;
@@ -945,7 +976,7 @@ namespace {
         v->add_piece(CUSTOM_PIECE_7, 'e', "KbRfBbF2"); // eagle
         v->startFen = "rpckcpl/3f3/sssssss/2s1S2/SSSSSSS/3F3/LPCKCPR[-] w 0 1";
         v->pieceDrops = true;
-        v->capturesToHand = true;
+        v->captureType = HAND;
         v->promotionRegion[WHITE] = Rank6BB | Rank7BB;
         v->promotionRegion[BLACK] = Rank2BB | Rank1BB;
         v->doubleStep = false;
@@ -1202,6 +1233,25 @@ namespace {
         v->passOnStalemate[BLACK] = true;
         return v;
     }
+
+    Variant* cfour() {
+        Variant* v = variant_base()->init();
+        v->maxRank = RANK_6;
+        v->maxFile = FILE_G;
+        v->reset_pieces();
+        v->add_piece(IMMOBILE_PIECE, 'p');
+        v->startFen = "7/7/7/7/7/7[PPPPPPPPPPPPPPPPPPPPPppppppppppppppppppppp] w - - 0 1";
+        v->pieceDrops = true;
+        v->enclosingDrop = TOP;
+        v->doubleStep = false;
+        v->castling = false;
+        v->stalemateValue = VALUE_DRAW;
+        v->immobilityIllegal = false;
+        v->connectN = 4;
+        v->nMoveRule = 0;
+        return v;
+    }
+
     // Minixiangqi
     // http://mlwi.magix.net/bg/minixiangqi.htm
     Variant* minixiangqi_variant() {
@@ -1261,7 +1311,7 @@ namespace {
         v->add_piece(COMMONER, 'k');
         v->add_piece(CUSTOM_PIECE_1, 'e', "FsfW"); // drunk elephant
         v->startFen = "lnsgkgsnl/1r2e2b1/ppppppppp/9/9/9/PPPPPPPPP/1B2E2R1/LNSGKGSNL w 0 1";
-        v->capturesToHand = false;
+        v->captureType = OUT;
         v->pieceDrops = false;
         v->promotedPieceType[CUSTOM_PIECE_1] = COMMONER;
         v->castlingKingPiece[WHITE] = v->castlingKingPiece[BLACK] = COMMONER;
@@ -1296,7 +1346,7 @@ namespace {
         v->promotedPieceType[CUSTOM_PIECE_2] = CUSTOM_PIECE_4;
         v->promotedPieceType[CUSTOM_PIECE_3] = ROOK;
         v->pieceDrops = true;
-        v->capturesToHand = true;
+        v->captureType = HAND;
         v->doubleStep = false;
         v->castling = false;
         v->dropNoDoubled = SHOGI_PAWN;
@@ -1347,7 +1397,7 @@ namespace {
         Variant* v = capablanca_variant()->init();
         v->startFen = "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR[] w KQkq - 0 1";
         v->pieceDrops = true;
-        v->capturesToHand = true;
+        v->captureType = HAND;
         return v;
     }
     // Capablanca random chess (CRC)
@@ -1784,8 +1834,8 @@ namespace {
         v->materialCounting = JANGGI_MATERIAL;
         v->diagonalLines = make_bitboard(SQ_D1, SQ_F1, SQ_E2, SQ_D3, SQ_F3,
                                          SQ_D8, SQ_F8, SQ_E9, SQ_D10, SQ_F10);
-        v->pass[WHITE] = true;
-        v->pass[BLACK] = true;
+        v->passOnStalemate[WHITE] = true;
+        v->passOnStalemate[BLACK] = true;
         v->nFoldValue = VALUE_DRAW;
         v->perpetualCheckIllegal = true;
         return v;
@@ -1881,6 +1931,7 @@ void VariantMap::init() {
     add("crazyhouse", crazyhouse_variant());
     add("loop", loop_variant());
     add("chessgi", chessgi_variant());
+    add("hostage", hostage_variant());
     add("bughouse", bughouse_variant());
     add("koedem", koedem_variant());
     add("pocketknight", pocketknight_variant());
@@ -1913,8 +1964,10 @@ void VariantMap::init() {
     add("ataxx", ataxx_variant());
     add("flipersi", flipersi_variant());
     add("flipello", flipello_variant());
+    add("cfour", cfour());
     add("minixiangqi", minixiangqi_variant());
     add("raazuvaa", raazuvaa_variant());
+    add("cavalry", cavalry_variant());
 #ifdef LARGEBOARDS
     add("shogi", shogi_variant());
     add("checkshogi", checkshogi_variant());
@@ -2006,7 +2059,7 @@ Variant* Variant::conclude() {
     }
     // We can not use popcount here yet, as the lookup tables are initialized after the variants
     int nnueSquares = (maxRank + 1) * (maxFile + 1);
-    nnueUsePockets = (pieceDrops && (capturesToHand || (!mustDrop && std::bitset<64>(pieceTypes).count() != 1))) || seirawanGating;
+    nnueUsePockets = (pieceDrops && (captureType == HAND || (!mustDrop && std::bitset<64>(pieceTypes).count() != 1))) || seirawanGating;
     int nnuePockets = nnueUsePockets ? 2 * int(maxFile + 1) : 0;
     int nnueNonDropPieceIndices = (2 * std::bitset<64>(pieceTypes).count() - (nnueKing != NO_PIECE_TYPE)) * nnueSquares;
     int nnuePieceIndices = nnueNonDropPieceIndices + 2 * (std::bitset<64>(pieceTypes).count() - (nnueKing != NO_PIECE_TYPE)) * nnuePockets;
@@ -2078,7 +2131,7 @@ Variant* Variant::conclude() {
                     && !connectN
                     && !blastOnCapture
                     && !petrifyOnCaptureTypes
-                    && !capturesToHand
+                    && captureType == OUT
                     && !twoBoards
                     && !restrictedMobility
                     && kingType == KING
