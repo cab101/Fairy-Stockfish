@@ -1692,7 +1692,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
                   ? captured
                   : unpromotedCaptured
                       ? unpromotedCaptured
-                      : make_piece(color_of(captured), promotion_pawn_type(color_of(captured)));
+                      : make_piece(color_of(captured), main_promotion_pawn_type(color_of(captured)));
           int n = add_to_prison(pieceToPrison);
           k ^= Zobrist->inHand[pieceToPrison][n - 1]
                ^ Zobrist->inHand[pieceToPrison][n];

@@ -23,7 +23,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE    := fairy_stockfish
 LOCAL_SRC_FILES := $(SF_SRC_FILES)
 LOCAL_CFLAGS    := -std=c++17 -stdlib=libc++ -DNNUE_EMBEDDING_OFF -DLARGEBOARDS -DPRECOMPUTED_MAGICS -DALLVARS $(MY_ARCH_DEF) -s -fPIE
-LOCAL_LDFLAGS	+= -s -fPIE -pie
+LOCAL_LDFLAGS	+= -s -fPIE -pie -Wl -z max-page-size=16384
 
 include $(BUILD_EXECUTABLE)
 #include $(BUILD_SHARED_LIBRARY)

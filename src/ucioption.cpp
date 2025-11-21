@@ -87,8 +87,8 @@ void on_variant_change(const Option &o) {
         // Send setup command
         sync_cout << "setup (" << v->pieceToCharTable << ") "
                   << v->maxFile + 1 << "x" << v->maxRank + 1
-                  << "+" << pocketsize << "_" << v->variantTemplate
-                  << " " << v->startFen
+                  << "+" << pocketsize << ( pocketsize != 0 && v->captureType == PRISON ? "_#" : "_" )
+                  << v->variantTemplate << " " << v->startFen
                   << sync_endl;
         // Send piece command with Betza notation
         // https://www.gnu.org/software/xboard/Betza.html
