@@ -114,7 +114,7 @@ public:
   // FEN string input/output
   Position& set(const Variant* v, const std::string& fenStr, bool isChess960, StateInfo* si, Thread* th, bool sfen = false);
   Position& set(const std::string& code, Color c, StateInfo* si);
-  std::string fen(bool sfen = false, bool showPromoted = false, int countStarted = 0, std::string holdings = "-") const;
+  std::string fen(bool sfen = false, bool showPromoted = false, int countStarted = 0, std::string holdings = "-", Bitboard fogArea = 0) const;
 
   // Variant rule properties
   const Variant* variant() const;
@@ -130,7 +130,7 @@ public:
   const std::string& piece_to_char_synonyms() const;
   Bitboard promotion_zone(Color c) const;
   Square promotion_square(Color c, Square s) const;
-  PieceType promotion_pawn_type(Color c) const;
+  PieceType main_promotion_pawn_type(Color c) const;
   PieceSet promotion_piece_types(Color c) const;
   bool sittuyin_promotion() const;
   int promotion_limit(PieceType pt) const;
@@ -158,6 +158,12 @@ public:
   Square nnue_king_square(Color c) const;
   bool nnue_use_pockets() const;
   bool nnue_applicable() const;
+  int nnue_piece_square_index(Color perspective, Piece pc) const;
+  int nnue_piece_hand_index(Color perspective, Piece pc) const;
+  int nnue_king_square_index(Square ksq) const;
+  bool free_drops() const;
+  bool fast_attacks() const;
+  bool fast_attacks2() const;
   bool checking_permitted() const;
   bool drop_checks() const;
   bool must_capture() const;
@@ -175,10 +181,14 @@ public:
   bool drop_opposite_colored_bishop() const;
   bool drop_promoted() const;
   PieceType drop_no_doubled() const;
+  PieceSet promotion_pawn_types(Color c) const;
+  PieceSet en_passant_types(Color c) const;
   bool immobility_illegal() const;
   bool gating() const;
   bool walling() const;
   WallingRule walling_rule() const;
+  bool wall_or_move() const;
+  Bitboard walling_region(Color c) const;
   bool seirawan_gating() const;
   bool cambodian_moves() const;
   Bitboard diagonal_lines() const;
@@ -328,6 +338,7 @@ public:
   Score psq_score() const;
   Value non_pawn_material(Color c) const;
   Value non_pawn_material() const;
+  Bitboard fog_area() const;
 
   // Position consistency check, for debugging
   bool pos_is_ok() const;
@@ -447,9 +458,9 @@ inline Square Position::promotion_square(Color c, Square s) const {
   return !b ? SQ_NONE : c == WHITE ? lsb(b) : msb(b);
 }
 
-inline PieceType Position::promotion_pawn_type(Color c) const {
+inline PieceType Position::main_promotion_pawn_type(Color c) const {
   assert(var != nullptr);
-  return var->promotionPawnType[c];
+  return var->mainPromotionPawnType[c];
 }
 
 inline PieceSet Position::promotion_piece_types(Color c) const {
@@ -583,12 +594,44 @@ inline bool Position::nnue_use_pockets() const {
 
 inline bool Position::nnue_applicable() const {
   // Do not use NNUE during setup phases (placement, sittuyin)
-  return (!count_in_hand(ALL_PIECES) || nnue_use_pockets() || !must_drop()) && !virtualPieces;
+  return (!count_in_hand(ALL_PIECES) || nnue_use_pockets() || !must_drop())
+         && !virtualPieces
+         && (!nnue_king() || (count(WHITE, nnue_king()) == 1 && count(BLACK, nnue_king()) == 1));
+}
+
+inline int Position::nnue_piece_square_index(Color perspective, Piece pc) const {
+  assert(var != nullptr);
+  return var->pieceSquareIndex[perspective][pc];
+}
+
+inline int Position::nnue_piece_hand_index(Color perspective, Piece pc) const {
+  assert(var != nullptr);
+  return var->pieceHandIndex[perspective][pc];
+}
+
+inline int Position::nnue_king_square_index(Square ksq) const {
+  assert(var != nullptr);
+  return var->kingSquareIndex[ksq];
 }
 
 inline bool Position::checking_permitted() const {
   assert(var != nullptr);
   return var->checking;
+}
+
+inline bool Position::free_drops() const {
+  assert(var != nullptr);
+  return var->freeDrops;
+}
+
+inline bool Position::fast_attacks() const {
+  assert(var != nullptr);
+  return var->fastAttacks;
+}
+
+inline bool Position::fast_attacks2() const {
+  assert(var != nullptr);
+  return var->fastAttacks2;
 }
 
 inline bool Position::drop_checks() const {
@@ -659,7 +702,7 @@ inline EnclosingRule Position::enclosing_drop() const {
 
 inline Bitboard Position::drop_region(Color c) const {
   assert(var != nullptr);
-  return c == WHITE ? var->whiteDropRegion : var->blackDropRegion;
+  return var->dropRegion[c];
 }
 
 inline Bitboard Position::drop_region(Color c, PieceType pt) const {
@@ -780,6 +823,16 @@ inline PieceType Position::drop_no_doubled() const {
   return var->dropNoDoubled;
 }
 
+inline PieceSet Position::promotion_pawn_types(Color c) const {
+  assert(var != nullptr);
+  return var->promotionPawnTypes[c];
+}
+
+inline PieceSet Position::en_passant_types(Color c) const {
+  assert(var != nullptr);
+  return var->enPassantTypes[c];
+}
+
 inline bool Position::immobility_illegal() const {
   assert(var != nullptr);
   return var->immobilityIllegal;
@@ -798,6 +851,16 @@ inline bool Position::walling() const {
 inline WallingRule Position::walling_rule() const {
   assert(var != nullptr);
   return var->wallingRule;
+}
+
+inline bool Position::wall_or_move() const {
+  assert(var != nullptr);
+  return var->wallOrMove;
+}
+
+inline Bitboard Position::walling_region(Color c) const {
+  assert(var != nullptr);
+  return var->wallingRegion[c];
 }
 
 inline bool Position::seirawan_gating() const {
@@ -1058,7 +1121,7 @@ inline bool Position::connect_diagonal() const {
 
 inline const std::vector<Direction>& Position::getConnectDirections() const {
     assert(var != nullptr);
-    return var->connect_directions;
+    return var->connectDirections;
 }
 
 inline int Position::connect_nxn() const {
@@ -1394,8 +1457,18 @@ inline bool Position::capture(Move m) const {
 inline Square Position::capture_square(Square to) const {
   assert(is_ok(to));
   // The capture square of en passant is either the marked ep piece or the closest piece behind the target square
-  Bitboard b = ep_squares() & pieces() ? ep_squares() & pieces() : pieces(~sideToMove) & forward_file_bb(~sideToMove, to);
-  return sideToMove == WHITE ? msb(b) : lsb(b);
+  Bitboard customEp = ep_squares() & pieces();
+  if (customEp)
+  {
+      // For longer custom en passant paths, we take the frontmost piece
+      return sideToMove == WHITE ? lsb(customEp) : msb(customEp);
+  }
+  else
+  {
+      // The capture square of normal en passant is the closest piece behind the target square
+      Bitboard epCandidates = pieces(~sideToMove) & forward_file_bb(~sideToMove, to);
+      return sideToMove == WHITE ? msb(epCandidates) : lsb(epCandidates);
+  }
 }
 
 inline bool Position::virtual_drop(Move m) const {
@@ -1407,11 +1480,25 @@ inline Piece Position::captured_piece() const {
   return st->capturedPiece;
 }
 
+inline Bitboard Position::fog_area() const {
+  Bitboard b = board_bb();
+  // Our own pieces are visible
+  Bitboard visible = pieces(sideToMove);
+  // Squares where we can move to are visible as well
+  for (const auto& m : MoveList<LEGAL>(*this))
+  {
+    Square to = to_sq(m);
+    visible |= to;
+  }
+  // Everything else is invisible
+  return ~visible & b;
+}
+
 inline const std::string Position::piece_to_partner() const {
   if (!st->capturedPiece) return std::string();
   Color color = color_of(st->capturedPiece);
   Piece piece = st->capturedpromoted ?
-      (st->unpromotedCapturedPiece ? st->unpromotedCapturedPiece : make_piece(color, promotion_pawn_type(color))) :
+      (st->unpromotedCapturedPiece ? st->unpromotedCapturedPiece : make_piece(color, main_promotion_pawn_type(color))) :
       st->capturedPiece;
   return std::string(1, piece_to_char()[piece]);
 }
